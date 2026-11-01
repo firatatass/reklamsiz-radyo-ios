@@ -37,6 +37,14 @@ jobs:
           grep -q "BEGIN PRIVATE KEY" "$ANAHTAR" || { echo "Anahtar biçimi hatalı"; exit 1; }
           echo "ASC_KEY_PATH=$ANAHTAR" >> "$GITHUB_ENV"
 
+      - name: Uygulamanın içine gömülecek listeleri indir
+        run: |
+          mkdir -p ReklamsizRadyo/Listeler
+          for f in radyo.m3u tv.m3u; do
+            curl -fsSL --retry 3 "https://raw.githubusercontent.com/firatatass/reklamsiz-radyo-liste/main/$f" -o "ReklamsizRadyo/Listeler/$f"
+            test "$(grep -c '^http' "ReklamsizRadyo/Listeler/$f")" -gt 10
+          done
+
       - name: Xcode projesini oluştur
         run: |
           brew install xcodegen

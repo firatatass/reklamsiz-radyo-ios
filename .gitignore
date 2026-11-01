@@ -12,3 +12,6 @@ DerivedData/
 *.xcarchive
 .DS_Store
 xcuserdata/
+
+# Derlemede indirilen gömülü listeler
+ReklamsizRadyo/Listeler/

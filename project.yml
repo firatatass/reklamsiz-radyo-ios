@@ -31,6 +31,8 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
         ITSAppUsesNonExemptEncryption: false
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         UISupportedInterfaceOrientations:
