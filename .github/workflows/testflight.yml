@@ -1,0 +1,79 @@
+name: TestFlight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  derle:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      ASC_KEY_ID: ${{ vars.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
+      TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      BUNDLE_ID: ${{ vars.BUNDLE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: En yeni Xcode'u seç
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+
+      - name: Apple anahtarını yerleştir
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          ANAHTAR=~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          printf '%s\n' "$ASC_KEY_P8" > "$ANAHTAR"
+          grep -q "BEGIN PRIVATE KEY" "$ANAHTAR" || { echo "Anahtar biçimi hatalı"; exit 1; }
+          echo "ASC_KEY_PATH=$ANAHTAR" >> "$GITHUB_ENV"
+
+      - name: Xcode projesini oluştur
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: İmzalamayı hazırla
+        run: |
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography requests
+          PYTHONPATH=scripts python3 scripts/imzala.py
+
+      - name: Arşivle
+        run: |
+          xcodebuild archive \
+            -project ReklamsizRadyo.xcodeproj -scheme ReklamsizRadyo -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/ReklamsizRadyo.xcarchive \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFIL_ADI" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN" | tail -n 80
+          test -d build/ReklamsizRadyo.xcarchive
+
+      - name: App Store Connect'e yükle
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/ReklamsizRadyo.xcarchive \
+            -exportPath build/ihrac \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: TestFlight test grubunu hazırla
+        run: PYTHONPATH=scripts python3 scripts/testflight.py
+
+      - name: Temizlik
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN" 2>/dev/null || true
+          rm -rf ~/.appstoreconnect build
