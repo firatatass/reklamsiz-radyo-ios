@@ -7,6 +7,7 @@ struct OynaticiEkrani: View {
     @EnvironmentObject private var depo: Depo
     @EnvironmentObject private var oynatici: Oynatici
     @EnvironmentObject private var bildirim: Bildirim
+    @ObservedObject private var asistan = SesliAsistan.shared
     @Environment(\.dismiss) private var kapat
 
     @State private var sinirAcik = false
@@ -33,9 +34,7 @@ struct OynaticiEkrani: View {
                         BuyukDugme(baslik: "Sonraki", etkin: oynatici.sonrakiVar) { oynatici.sonraki() }
                     }
 
-                    BuyukDugme(baslik: "Sesli Asistan") {
-                        bildirim.goster("Sesli asistan sonraki deneme sürümünde gelecek.")
-                    }
+                    BuyukDugme(baslik: "Sesli Asistan") { asistan.pencereyiAc() }
 
                     if !k.dosyaMi {
                         BuyukDugme(baslik: oynatici.kayitYapiliyor ? "Kaydı Durdur" : "Kaydı Başlat") {
@@ -60,6 +59,9 @@ struct OynaticiEkrani: View {
             if yeni == nil { kapat() }
         }
         .onAppear { oynatici.veriyiYenile() }
+        .sheet(isPresented: Binding(get: { asistan.acik }, set: { if !$0 && asistan.acik { asistan.kapat() } })) {
+            AsistanPenceresi(asistan: asistan)
+        }
         .alert("Veri Sınırı Belirle (MB)", isPresented: $sinirAcik) {
             TextField("Örn: 100 (MB cinsinden)", text: $sinirMetni)
                 .keyboardType(.numberPad)

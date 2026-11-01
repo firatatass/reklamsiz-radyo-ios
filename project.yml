@@ -31,6 +31,8 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
         ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Sesli asistanın komutlarınızı duyabilmesi için mikrofon izni gerekir.
+        NSSpeechRecognitionUsageDescription: Söylediğiniz komutları anlayabilmek için konuşma tanıma izni gerekir.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         NSAppTransportSecurity:

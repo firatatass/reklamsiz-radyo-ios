@@ -5,6 +5,7 @@ struct AnaEkran: View {
     @EnvironmentObject private var depo: Depo
     @EnvironmentObject private var oynatici: Oynatici
     @EnvironmentObject private var bildirim: Bildirim
+    @EnvironmentObject private var asistan: SesliAsistan
 
     @AppStorage("last_tab") private var sekme = "home"
     @AppStorage("last_category") private var kategori = "Tümü"
@@ -99,6 +100,14 @@ struct AnaEkran: View {
             TvUyarisi { tvUyarisiSonrasi = k }
         }
         .sheet(item: $paylasilacak) { d in PaylasPenceresi(ogeler: [d.url]) }
+        .sheet(isPresented: Binding(get: { asistan.acik && !oynaticiAcik }, set: { if !$0 && asistan.acik { asistan.kapat() } })) {
+            AsistanPenceresi(asistan: asistan)
+        }
+        .onChange(of: asistan.istek) { i in
+            guard let i else { return }
+            asistan.istek = nil
+            asistanIstegi(i)
+        }
         .alert(silinecek.map { "\($0.ad) silinsin mi?" } ?? "", isPresented: Binding(
             get: { silinecek != nil }, set: { if !$0 { silinecek = nil } }), presenting: silinecek) { k in
             Button("Evet", role: .destructive) { sil(k) }
@@ -136,7 +145,7 @@ struct AnaEkran: View {
                 .font(.title2.bold())
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button { bildirim.goster("Sesli asistan sonraki deneme sürümünde gelecek.") } label: {
+            Button { asistan.pencereyiAc() } label: {
                 Image(systemName: "mic.fill").font(.title2)
             }
             .accessibilityLabel("Sesli Asistan")
@@ -336,6 +345,34 @@ struct AnaEkran: View {
         } else {
             depo.sil(k)
             bildirim.goster("Radyo silindi.")
+        }
+    }
+
+    /// Sesli asistanın istediği işler (Android AssistantCallbacks).
+    private func asistanIstegi(_ i: AsistanIstegi) {
+        switch i {
+        case .cal(let k):
+            // Kanal ekranda görünen listedeyse doğrudan aç; değilse doğru listeye geç (TV ise TV Kanalları, radyo ise Tümü).
+            if gorunen.contains(where: { $0.url == k.url }) {
+                tikla(k)
+            } else {
+                kategori = depo.tvMi(k) ? TV_KATEGORI : "Tümü"
+                sekme = "home"
+                arama = ""
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { tikla(k) }
+            }
+        case .sekme(let s):
+            sekme = s
+            arama = ""
+            if s == "rec" { kayitDosyalari = depo.kayitDosyalari() }
+        case .kategori(let k):
+            kategori = k
+            sekme = "home"
+            arama = ""
+        case .durdurAnaEkran:
+            oynatici.durdur()
+            oynaticiAcik = false
+            sekme = "home"
         }
     }
 

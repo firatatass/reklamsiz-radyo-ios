@@ -25,8 +25,11 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     @Published private(set) var veri = 0
     @Published private(set) var kayitYapiliyor = false
     @Published var limitUyarisi: LimitUyarisi?
+    @Published private(set) var uykuAktif = false
 
     private var player: AVPlayer?
+    private var kisik = false
+    private var uykuGorevi: Task<Void, Never>?
     private var gozlemciler: [NSKeyValueObservation] = []
     private var bildirimGozlemcisi: NSObjectProtocol?
     private var zamanlayici: Timer?
@@ -100,6 +103,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         oge.add(cikis)
         let p = AVPlayer(playerItem: oge)
         p.automaticallyWaitsToMinimizeStalling = true
+        p.volume = kisik ? 0.25 : 1
         gozlemciler = [
             oge.observe(\.status) { [weak self] o, _ in
                 Task { @MainActor in if o.status == .failed { self?.yayinKoptu() } }
@@ -145,6 +149,36 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         bilgi = ""
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Sesli asistan açıkken yayının sesi kısılır (Android DUCK_VOLUME / RESTORE_VOLUME).
+    func kis(_ evet: Bool) {
+        kisik = evet
+        player?.volume = evet ? 0.25 : 1
+    }
+
+    // MARK: Uyku zamanlayıcı (iPhone'da uygulama kendini kapatamadığı için süre dolunca yayın durdurulur)
+
+    func uykuKur(_ dakika: Int) {
+        uykuGorevi?.cancel()
+        uykuAktif = true
+        uykuGorevi = Task {
+            try? await Task.sleep(nanoseconds: UInt64(dakika) * 60 * 1_000_000_000)
+            if Task.isCancelled { return }
+            self.uykuAktif = false
+            self.durdur()
+        }
+        Bildirim.shared.goster("\(dakika) dakika sonra yayın kapanacak")
+    }
+
+    @discardableResult
+    func uykuyuIptalEt() -> Bool {
+        guard uykuAktif else { return false }
+        uykuGorevi?.cancel()
+        uykuGorevi = nil
+        uykuAktif = false
+        Bildirim.shared.goster("Zamanlayıcı iptal edildi")
+        return true
     }
 
     func atla(_ saniye: Double) {
