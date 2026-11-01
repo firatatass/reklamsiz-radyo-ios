@@ -49,7 +49,10 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private let ayar = UserDefaults.standard
     private let tanima = SFSpeechRecognizer(locale: Locale(identifier: "tr-TR"))
-    private let motor = AVAudioEngine()
+    /// Her dinlemede, ses oturumu "çalma ve kayıt"a geçtikten SONRA yeniden kurulur.
+    /// (Önceden kurulan motor, mikrofon kapalıyken okunan biçimi saklayıp kayda başlarken uygulamayı çökertiyordu.)
+    private var motor: AVAudioEngine?
+    private var dinleyiciKurulu = false
     private var tanimaIstegi: SFSpeechAudioBufferRecognitionRequest?
     private var tanimaGorevi: SFSpeechRecognitionTask?
     private var oturum = 0
@@ -165,13 +168,19 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             try ses.setActive(true)
             let istek = SFSpeechAudioBufferRecognitionRequest()
             istek.shouldReportPartialResults = true
-            tanimaIstegi = istek
-            let giris = motor.inputNode
+            let m = AVAudioEngine()
+            let giris = m.inputNode
             let bicim = giris.outputFormat(forBus: 0)
-            giris.removeTap(onBus: 0)
+            guard bicim.sampleRate > 0, bicim.channelCount > 0 else {
+                durumYaz("Mikrofon başlatılamadı. Lütfen tekrar deneyin.", hata: true)
+                return
+            }
+            tanimaIstegi = istek
             giris.installTap(onBus: 0, bufferSize: 1024, format: bicim) { tampon, _ in istek.append(tampon) }
-            motor.prepare()
-            try motor.start()
+            dinleyiciKurulu = true
+            motor = m
+            m.prepare()
+            try m.start()
             oturum += 1
             let buOturum = oturum
             sonMetin = ""
@@ -273,8 +282,12 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         dinliyor = false
         sessizlikGorevi?.cancel()
         zamanAsimiGorevi?.cancel()
-        if motor.isRunning { motor.stop() }
-        motor.inputNode.removeTap(onBus: 0)
+        if let m = motor {
+            if m.isRunning { m.stop() }
+            if dinleyiciKurulu { m.inputNode.removeTap(onBus: 0) }
+        }
+        motor = nil
+        dinleyiciKurulu = false
         tanimaIstegi?.endAudio()
         tanimaGorevi?.cancel()
         tanimaIstegi = nil
