@@ -63,8 +63,9 @@ struct AnaEkran: View {
                 .autocorrectionDisabled()
                 .padding(.horizontal)
                 .padding(.vertical, 6)
-            if sekme == "home" { kategoriCubugu }
+            // Android'de de sekmeler kod içinde arama kutusunun hemen altına, kategoriler onların altına taşınıyor.
             sekmeCubugu
+            if sekme == "home" { kategoriCubugu }
             liste
             if oynatici.calan != nil { kucukOynatici }
         }
