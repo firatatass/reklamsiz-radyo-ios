@@ -1,0 +1,14 @@
+# Gizli anahtarlar ve imzalama dosyaları asla depoya girmez
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+AuthKey_*
+
+# Derleme çıktıları
+build/
+DerivedData/
+*.ipa
+*.xcarchive
+.DS_Store
+xcuserdata/
