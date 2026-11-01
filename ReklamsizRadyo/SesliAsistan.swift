@@ -131,11 +131,23 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
     }
 
-    private func sonraKapat(_ saniye: Double) {
+    /// Belirtilen süre geçince, asistan o an konuşuyorsa cümlesini bitirmesini bekleyip pencereyi kapatır.
+    private func sonraKapat(_ saniye: Double, sonra: (() -> Void)? = nil) {
         kapatmaGorevi?.cancel()
         kapatmaGorevi = Task {
             try? await Task.sleep(nanoseconds: UInt64(saniye * 1_000_000_000))
-            if !Task.isCancelled { self.kapat() }
+            await self.konusmaninBitmesiniBekle()
+            if Task.isCancelled { return }
+            self.kapat()
+            sonra?()
+        }
+    }
+
+    private func konusmaninBitmesiniBekle() async {
+        var bekleme = 0
+        while konusucu.isSpeaking && bekleme < 75 {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            bekleme += 1
         }
     }
 
@@ -433,11 +445,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             (k.contains("kapat") && !k.contains("sonra") && !k.contains("dakika") && !k.contains("saat") && !k.contains("yayini") && !k.contains("alarm") && !k.contains("zamanlayici")) {
             let c = "Yayın durduruldu. İyi günler dilerim."
             cevapYaz(c); konus(c)
-            Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                self.kapat()
-                self.istek = .durdurAnaEkran
-            }
+            sonraKapat(1.5) { self.istek = .durdurAnaEkran }
             return
         }
 
@@ -663,11 +671,8 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let r = eslesen[0]
             let c = "\(r.ad) açılıyor..."
             cevapYaz(c); konus(c)
-            Task {
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                self.kapat()
-                self.istek = .cal(r)
-            }
+            // Cümle bitince asistan kapanır, sonra kanal açılır (Android: konuş, kapat, aç).
+            sonraKapat(1.2) { self.istek = .cal(r) }
             return
         } else if eslesen.count > 1 {
             belirsizRadyolar(eslesen, "PLAY")
@@ -789,11 +794,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             case "PLAY":
                 let c = "\(r.ad) açılıyor..."
                 cevapYaz(c); konus(c)
-                Task {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    self.istek = .cal(r)
-                    self.kapat()
-                }
+                sonraKapat(1.5) { self.istek = .cal(r) }
             case "ALARM_SELECTION":
                 seciliAlarmRadyosu = r
                 durumMakinesi = .alarmSaati
@@ -976,11 +977,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard let s = secim else { return false }
         let (c, i) = s
         cevapYaz(c); konus(c)
-        Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            self.kapat()
-            self.temaDegistir(i)
-        }
+        sonraKapat(1.5) { self.temaDegistir(i) }
         return true
     }
 

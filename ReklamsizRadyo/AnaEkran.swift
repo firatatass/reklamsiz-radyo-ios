@@ -23,6 +23,11 @@ struct AnaEkran: View {
     @State private var paylasilacak: PaylasilacakDosya?
     @State private var kayitDosyalari: [Kayit] = []
     @State private var kaydirHedefi: Int?
+    /// Asistan penceresi kapanırken gelen istek, pencere tamamen kapandıktan sonra yapılır
+    /// (iPhone/iPad bir pencere kapanırken başka pencere açamıyor).
+    @State private var asistanGorunur = false
+    @State private var oynaticiGorunur = false
+    @State private var bekleyenIstek: AsistanIstegi?
     @AccessibilityFocusState private var odak: Int?
 
     private var sekmeSirasi: [String] {
@@ -82,8 +87,12 @@ struct AnaEkran: View {
             }
         }
         .onAppear { if sekme == "rec" { kayitDosyalari = depo.kayitDosyalari() } }
-        .fullScreenCover(isPresented: $oynaticiAcik, onDismiss: odagiGeriVer) {
+        .fullScreenCover(isPresented: $oynaticiAcik, onDismiss: {
+            oynaticiGorunur = false
+            odagiGeriVer()
+        }) {
             OynaticiEkrani().environmentObject(depo).environmentObject(oynatici).environmentObject(bildirim)
+                .onAppear { oynaticiGorunur = true }
         }
         .fullScreenCover(item: $duzenlenen) { k in
             DuzenleEkrani(kayit: k).environmentObject(depo).environmentObject(oynatici).environmentObject(bildirim)
@@ -100,13 +109,25 @@ struct AnaEkran: View {
             TvUyarisi { tvUyarisiSonrasi = k }
         }
         .sheet(item: $paylasilacak) { d in PaylasPenceresi(ogeler: [d.url]) }
-        .sheet(isPresented: Binding(get: { asistan.acik && !oynaticiAcik }, set: { if !$0 && asistan.acik { asistan.kapat() } })) {
+        .sheet(isPresented: Binding(get: { asistan.acik && !oynaticiAcik }, set: { if !$0 && asistan.acik { asistan.kapat() } }),
+               onDismiss: {
+            asistanGorunur = false
+            if let i = bekleyenIstek {
+                bekleyenIstek = nil
+                asistanIstegi(i)
+            }
+        }) {
             AsistanPenceresi(asistan: asistan)
+                .onAppear { asistanGorunur = true }
         }
         .onChange(of: asistan.istek) { i in
             guard let i else { return }
             asistan.istek = nil
-            asistanIstegi(i)
+            if asistanGorunur {
+                bekleyenIstek = i
+            } else {
+                asistanIstegi(i)
+            }
         }
         .alert(silinecek.map { "\($0.ad) silinsin mi?" } ?? "", isPresented: Binding(
             get: { silinecek != nil }, set: { if !$0 { silinecek = nil } }), presenting: silinecek) { k in
@@ -285,7 +306,7 @@ struct AnaEkran: View {
         let bilgi = oynatici.bilgi.isEmpty ? "" : " - " + oynatici.bilgi
         let kayit = oynatici.kayitYapiliyor ? " (Kayıtta)" : ""
         let metin = k.ad + bilgi + kayit
-        return Button { oynaticiAcik = true } label: {
+        return Button { oynaticiyiAc() } label: {
             Text(metin)
                 .font(.headline)
                 .lineLimit(1)
@@ -324,7 +345,18 @@ struct AnaEkran: View {
 
     private func baslat(_ k: Kayit) {
         oynatici.baslat(k, liste: gorunen)
-        oynaticiAcik = true
+        oynaticiyiAc()
+    }
+
+    /// Oynatıcı penceresini açar. Pencere açık sanılıp ekranda değilse (başka pencere kapanırken açılamadıysa) yeniden dener.
+    private func oynaticiyiAc() {
+        if oynaticiAcik && oynaticiGorunur { return }
+        if oynaticiAcik {
+            oynaticiAcik = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { oynaticiAcik = true }
+        } else {
+            oynaticiAcik = true
+        }
     }
 
     private func favori(_ k: Kayit) {
