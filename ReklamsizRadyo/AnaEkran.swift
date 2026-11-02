@@ -58,7 +58,7 @@ struct AnaEkran: View {
         switch sekme {
         case "fav": temel = depo.kayitlar.filter(\.favori)
         case "rec": temel = kayitDosyalari
-        default: temel = depo.filtrele(depo.kayitlar, kategori: kategori)
+        default: temel = depo.filtrele(depo.birlesikListe, kategori: kategori)
         }
         let a = arama.trimmingCharacters(in: .whitespaces)
         return a.isEmpty ? temel : temel.filter { $0.ad.localizedCaseInsensitiveContains(a) }

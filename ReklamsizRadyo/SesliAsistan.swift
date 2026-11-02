@@ -360,7 +360,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     // MARK: Uygulama bağlantıları (Android AssistantCallbacks)
 
-    private var tumKayitlar: [Kayit] { depo?.kayitlar ?? [] }
+    private var tumKayitlar: [Kayit] { depo?.asistanListesi ?? [] }
     private var aktifKayit: Kayit? {
         guard let c = oynatici?.calan else { return nil }
         return depo?.kayitlar.first { $0.url == c.url } ?? c

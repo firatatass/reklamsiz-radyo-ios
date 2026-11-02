@@ -67,6 +67,12 @@ final class Depo: ObservableObject {
     /// Kategori, veri sayacı gibi ayarlar değişince ekranın yenilenmesi için.
     @Published private(set) var degisim = 0
 
+    /// Android'deki gibi radio-browser.info'dan gelen ek Türk radyoları (sadece bellekte, her açılışta yeniden alınır).
+    @Published private(set) var apiKayitlar: [Kayit] = []
+    private var apiKategoriler: [String: String] = [:]
+    /// Kullanıcının sildiği/düzenlediği ek radyoların adresleri (Android "deleted_api_urls").
+    private var silinenApi: Set<String> = []
+
     private var silinenler: Set<String> = []
     private var sonNo = 0
     private let ayar = UserDefaults.standard
@@ -91,8 +97,12 @@ final class Depo: ObservableObject {
 
     init() {
         yukle()
+        if let m = ayar.string(forKey: "deleted_api_urls"), let d = try? JSONSerialization.jsonObject(with: Data(m.utf8)) as? [String] {
+            silinenApi = Set(d)
+        }
         esitle()
         Task { await internettenGuncelle() }
+        Task { await radioBrowserAl() }
     }
 
     // MARK: Ayarlar (Android'deki RadioPrefs anahtarlarıyla aynı adlar)
@@ -128,20 +138,40 @@ final class Depo: ObservableObject {
     // MARK: Kullanıcı işlemleri
 
     func favoriDegistir(_ k: Kayit) {
-        guard let i = kayitlar.firstIndex(where: { $0.no == k.no }) else { return }
+        guard let i = kayitlar.firstIndex(where: { $0.no == k.no }) else {
+            // Ek radyo (radio-browser): Android'deki gibi favorilere alınınca kendi listemize eklenir.
+            sonNo += 1
+            kayitlar.append(Kayit(no: sonNo, ad: k.ad, url: k.url, favori: !k.favori))
+            kaydet()
+            return
+        }
         kayitlar[i].favori.toggle()
         kaydet()
     }
 
     func sil(_ k: Kayit) {
-        guard let i = kayitlar.firstIndex(where: { $0.no == k.no }) else { return }
+        guard let i = kayitlar.firstIndex(where: { $0.no == k.no }) else {
+            silinenApi.insert(k.url)
+            silinenApiKaydet()
+            kaydet()
+            return
+        }
         if let kaynak = kayitlar[i].kaynak { silinenler.insert(kaynak) }
         kayitlar.remove(at: i)
         kaydet()
     }
 
     func duzenle(_ k: Kayit, ad: String, url: String, kategori kat: String) {
-        guard let i = kayitlar.firstIndex(where: { $0.no == k.no }) else { return }
+        guard let i = kayitlar.firstIndex(where: { $0.no == k.no }) else {
+            // Ek radyo düzenlendi: kendi listemize eklenir, eskisi bir daha gösterilmez (Android ile aynı).
+            sonNo += 1
+            kayitlar.append(Kayit(no: sonNo, ad: ad, url: url, favori: k.favori))
+            silinenApi.insert(k.url)
+            silinenApiKaydet()
+            kategoriAyarla(url, kat)
+            kaydet()
+            return
+        }
         // Düzenlenen kayıt artık kullanıcınındır; liste güncellemeleri üzerine yazmaz.
         if let kaynak = kayitlar[i].kaynak { silinenler.insert(kaynak) }
         kayitlar[i].kaynak = nil
@@ -164,6 +194,8 @@ final class Depo: ObservableObject {
     func varsayilaniYukle() {
         kayitlar = []
         silinenler = []
+        silinenApi = []
+        ayar.removeObject(forKey: "deleted_api_urls")
         ayar.set(false, forKey: "user_deleted_all")
         esitle()
     }
@@ -172,6 +204,8 @@ final class Depo: ObservableObject {
     func tumunuSil() {
         kayitlar = []
         for t in Tur.allCases { guncelListe(t).forEach { silinenler.insert($0.id) } }
+        silinenApi = []
+        ayar.removeObject(forKey: "deleted_api_urls")
         ayar.set(true, forKey: "user_deleted_all")
         kaydet()
     }
@@ -243,14 +277,68 @@ final class Depo: ObservableObject {
         return eklenen
     }
 
+    // MARK: Ek radyolar (Android fetchRadioBrowserApi)
+
+    /// Tüm Radyolar sekmesinin kaynağı: kendi listemiz + listede olmayan ve silinmemiş ek radyolar.
+    var birlesikListe: [Kayit] {
+        let adresler = Set(kayitlar.map(\.url))
+        return kayitlar + apiKayitlar.filter { !adresler.contains($0.url) && !silinenApi.contains($0.url) }
+    }
+
+    /// Asistanın aradığı liste (Android getAllRadios: adrese göre tekil).
+    var asistanListesi: [Kayit] {
+        var gorulen = Set<String>()
+        return (kayitlar + apiKayitlar).filter { gorulen.insert($0.url).inserted }
+    }
+
+    private func silinenApiKaydet() {
+        if let v = try? JSONSerialization.data(withJSONObject: Array(silinenApi)) {
+            ayar.set(String(decoding: v, as: UTF8.self), forKey: "deleted_api_urls")
+        }
+    }
+
+    func radioBrowserAl() async {
+        guard let url = URL(string: "https://de1.api.radio-browser.info/json/stations/search?countrycode=TR&hidebroken=true&lastcheckok=1&order=clickcount&reverse=true&limit=500") else { return }
+        var istek = URLRequest(url: url)
+        istek.setValue("ReklamsizRadyo/3.0", forHTTPHeaderField: "User-Agent")
+        istek.timeoutInterval = 20
+        guard let (veri, cevap) = try? await URLSession.shared.data(for: istek),
+              (cevap as? HTTPURLResponse)?.statusCode == 200,
+              let dizi = try? JSONSerialization.jsonObject(with: veri) as? [[String: Any]] else { return }
+        var yeni: [Kayit] = []
+        var kategoriler: [String: String] = [:]
+        for (i, o) in dizi.enumerated() {
+            let ad = (o["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let adres = o["url_resolved"] as? String ?? ""
+            if adres.isEmpty { continue }
+            let etiket = (o["tags"] as? String ?? "").lowercased()
+            var kat = "Tümü"
+            if etiket.contains("pop") && !etiket.contains("arabesk") { kat = "Pop" }
+            else if etiket.contains("news") || etiket.contains("haber") || etiket.contains("information") { kat = "Haber" }
+            else if etiket.contains("slow") || etiket.contains("romantic") || etiket.contains("love") { kat = "Slow" }
+            else if etiket.contains("islam") || etiket.contains("dini") || etiket.contains("quran") || etiket.contains("religion") { kat = "Dini" }
+            // Ek radyoların numarası eksi büyük sayılar: kendi listemizle ve kayıt dosyalarıyla karışmaz.
+            yeni.append(Kayit(no: -100_000 - i, ad: ad, url: adres))
+            if kat != "Tümü" { kategoriler[adres] = kat }
+        }
+        apiKayitlar = yeni
+        apiKategoriler = kategoriler
+        degisim += 1
+    }
+
     // MARK: Kategori süzgeci (Android getCategoryFilteredList)
 
     func filtrele(_ liste: [Kayit], kategori aktif: String) -> [Kayit] {
         if aktif == TV_KATEGORI { return liste.filter { tvMi($0) } }
         // TV kanalları sadece "TV Kanalları" kategorisinde görünür, "Tümü" listesinde yer almaz.
         if aktif == "Tümü" { return liste.filter { !tvMi($0) } }
+        // Bu kategorilerde sadece kendi listemizdeki radyolar gösterilir (ek radyolar karışmasın).
+        let kisitli = ["Oyun Havası", "Yerel", "Arabesk", "Spor"].contains(aktif)
+        let adresler = Set(kayitlar.map(\.url))
         return liste.filter { k in
+            if kisitli && !adresler.contains(k.url) { return false }
             if let kayitli = kategori(k.url), kayitli != OTOMATIK_KATEGORI { return kayitli == aktif }
+            if let apiKat = apiKategoriler[k.url] { return apiKat == aktif }
             let ad = k.ad.lowercased()
             func icerir(_ kelimeler: [String]) -> Bool { kelimeler.contains { ad.contains($0) } }
             switch aktif {
