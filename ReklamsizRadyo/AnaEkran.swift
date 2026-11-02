@@ -129,9 +129,7 @@ struct AnaEkran: View {
             Button("Kapat", role: .cancel) {}
         } message: {
             let surum = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-            Text("Reklamsız Radyo v\(surum)\nGeliştirici: Fırat Ataş\n\nGörüş ve önerileriniz için iletişime geçebilirsiniz.
-
-MP3 kayıtları LAME kodlayıcısıyla yapılır (GNU LGPL lisansı, lame.sourceforge.io). Uygulamanın kaynak kodu: github.com/firatatass/reklamsiz-radyo-ios")
+            Text("Reklamsız Radyo v\(surum)\nGeliştirici: Fırat Ataş\n\nGörüş ve önerileriniz için iletişime geçebilirsiniz.\n\nMP3 kayıtları LAME kodlayıcısıyla yapılır (GNU LGPL lisansı, lame.sourceforge.io). Uygulamanın kaynak kodu: github.com/firatatass/reklamsiz-radyo-ios")
         }
         .sheet(isPresented: Binding(get: { asistan.acik && !oynaticiAcik }, set: { if !$0 && asistan.acik { asistan.kapat() } }),
                onDismiss: {
