@@ -58,7 +58,8 @@ struct OynaticiEkrani: View {
                         }
                     }
 
-                    veriAlani(k)
+                    // Kayıt dosyası internetten gelmediği için internet tüketimi ve sınır gösterilmez.
+                    if !k.dosyaMi { veriAlani(k) }
 
                     BuyukDugme(baslik: "Kapat") {
                         oynatici.durdur()
