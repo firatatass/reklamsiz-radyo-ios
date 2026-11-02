@@ -300,6 +300,42 @@ final class Kaydedici: NSObject, ObservableObject, URLSessionDataDelegate {
         return (cikis, tur)
     }
 
+    // MARK: MP3 kodlama (LAME, Android'deki FFmpeg libmp3lame -b:a 128k ile aynı ayar)
+
+    private nonisolated static func mp3Kodla(_ kaynak: URL, _ hedef: URL) -> Bool {
+        guard let giris = try? AVAudioFile(forReading: kaynak) else { return false }
+        let bicim = giris.processingFormat
+        let kanal = Int(bicim.channelCount)
+        guard kanal > 0, let lame = lame_init() else { return false }
+        defer { lame_close(lame) }
+        lame_set_in_samplerate(lame, Int32(bicim.sampleRate))
+        lame_set_num_channels(lame, Int32(min(kanal, 2)))
+        lame_set_brate(lame, 128)
+        lame_set_quality(lame, 2)
+        guard lame_init_params(lame) >= 0 else { return false }
+        FileManager.default.createFile(atPath: hedef.path, contents: nil)
+        guard let yazici = try? FileHandle(forWritingTo: hedef) else { return false }
+        defer { try? yazici.close() }
+        let kare: AVAudioFrameCount = 8192
+        guard let tampon = AVAudioPCMBuffer(pcmFormat: bicim, frameCapacity: kare) else { return false }
+        var mp3 = [UInt8](repeating: 0, count: Int(Double(kare) * 1.25) + 7200)
+        var toplam = 0
+        while true {
+            do { try giris.read(into: tampon) } catch { break }
+            let n = Int(tampon.frameLength)
+            if n == 0 { break }
+            guard let veri = tampon.floatChannelData else { return false }
+            let sol = UnsafePointer(veri[0])
+            let sag = UnsafePointer(kanal > 1 ? veri[1] : veri[0])
+            let yazilan = lame_encode_buffer_ieee_float(lame, sol, sag, Int32(n), &mp3, Int32(mp3.count))
+            if yazilan < 0 { return false }
+            if yazilan > 0 { yazici.write(Data(mp3[0..<Int(yazilan)])); toplam += Int(yazilan) }
+        }
+        let son = lame_encode_flush(lame, &mp3, Int32(mp3.count))
+        if son > 0 { yazici.write(Data(mp3[0..<Int(son)])); toplam += Int(son) }
+        return toplam > 1024
+    }
+
     // MARK: Dönüştürme ve kaydetme
 
     static var secilenBicim: String { UserDefaults.standard.string(forKey: "record_format") ?? "m4a" }
@@ -315,9 +351,8 @@ final class Kaydedici: NSObject, ObservableObject, URLSessionDataDelegate {
         guard (try? fm.moveItem(at: gecici, to: kaynakDosya)) != nil else { return (false, bicim) }
         defer { try? fm.removeItem(at: kaynakDosya) }
 
-        // iPhone'da MP3 kodlayıcı yok: yayın zaten MP3 ise olduğu gibi saklanır, değilse M4A olarak kaydedilir.
-        var hedefBicim = bicim
-        if bicim == "mp3" && kaynak != .mp3 { hedefBicim = "m4a" }
+        // Yayın zaten MP3 ise olduğu gibi saklanır; değilse uygulamadaki LAME kodlayıcısıyla MP3'e çevrilir.
+        let hedefBicim = bicim
 
         let klasor = Depo.kayitKlasoru
         try? fm.createDirectory(at: klasor, withIntermediateDirectories: true)
@@ -332,7 +367,12 @@ final class Kaydedici: NSObject, ObservableObject, URLSessionDataDelegate {
         }
 
         if hedefBicim == "mp3" {
-            return ((try? fm.copyItem(at: kaynakDosya, to: hedef)) != nil, "mp3")
+            if kaynak == .mp3 {
+                return ((try? fm.copyItem(at: kaynakDosya, to: hedef)) != nil, "mp3")
+            }
+            let tamam = mp3Kodla(kaynakDosya, hedef)
+            if !tamam { try? fm.removeItem(at: hedef) }
+            return (tamam, "mp3")
         }
         do {
             let giris = try AVAudioFile(forReading: kaynakDosya)

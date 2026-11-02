@@ -12,7 +12,12 @@ targets:
   ReklamsizRadyo:
     type: application
     platform: iOS
-    sources: [ReklamsizRadyo]
+    sources:
+      - path: ReklamsizRadyo
+      # MP3 kodlayıcı (LAME, LGPL). Sadece kayıtları MP3'e çevirmek için.
+      - path: LAME
+        compilerFlags: ["-DHAVE_CONFIG_H", "-w"]
+        excludes: ["OKU.txt", "COPYING"]
     scheme: {}
     settings:
       base:
@@ -20,6 +25,8 @@ targets:
         PRODUCT_NAME: ReklamsizRadyo
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: ReklamsizRadyo/KopruBasligi.h
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/LAME", "$(SRCROOT)/LAME/include", "$(SRCROOT)/LAME/libmp3lame"]
     info:
       path: ReklamsizRadyo/Info.plist
       properties:

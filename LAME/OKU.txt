@@ -1,0 +1,4 @@
+LAME 3.100 MP3 kodlayıcısı (https://lame.sourceforge.io), resmi kaynak paketinden alındı
+(lame-3.100.tar.gz, SHA-256 ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e).
+Sadece kodlayıcı (libmp3lame) kullanılır; çözücü (mpglib) ve SSE parçası alınmadı.
+Lisans: GNU LGPL (COPYING dosyası). Bu deponun tüm kaynak kodu açıktır.
