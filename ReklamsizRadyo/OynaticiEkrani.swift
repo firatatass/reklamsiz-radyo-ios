@@ -19,11 +19,27 @@ struct OynaticiEkrani: View {
         ScrollView {
             if let k = oynatici.calan {
                 VStack(spacing: 18) {
+                    // Android'deki geri tuşunun karşılığı: pencereyi kapatır, yayın çalmaya devam eder.
+                    // iPad klavyesinde Esc tuşu da aynı işi yapar.
+                    HStack {
+                        Button { kapat() } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("Geri")
+                            }
+                            .font(.title3)
+                            .frame(minHeight: 44)
+                        }
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Geri")
+                        Spacer()
+                    }
+
                     Text(oynatici.bilgi.isEmpty ? k.ad : k.ad + "\n" + oynatici.bilgi)
                         .font(.title.bold())
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 30)
+                        .padding(.top, 10)
                         .accessibilityAddTraits(.isHeader)
 
                     if k.dosyaMi { konumAlani }
