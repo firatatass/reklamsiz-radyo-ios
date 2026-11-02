@@ -25,6 +25,9 @@ struct AnaEkran: View {
     @State private var kaydirHedefi: Int?
     /// Asistan penceresi kapanırken gelen istek, pencere tamamen kapandıktan sonra yapılır
     /// (iPhone/iPad bir pencere kapanırken başka pencere açamıyor).
+    @State private var ayarlarAcik = false
+    @State private var hakkindaAcik = false
+    @Environment(\.openURL) private var adresAc
     @State private var asistanGorunur = false
     @State private var oynaticiGorunur = false
     @State private var bekleyenIstek: AsistanIstegi?
@@ -109,6 +112,21 @@ struct AnaEkran: View {
             TvUyarisi { tvUyarisiSonrasi = k }
         }
         .sheet(item: $paylasilacak) { d in PaylasPenceresi(ogeler: [d.url]) }
+        .sheet(isPresented: $ayarlarAcik) {
+            AyarlarEkrani().environmentObject(depo).environmentObject(oynatici).environmentObject(bildirim)
+        }
+        .alert("Hakkında", isPresented: $hakkindaAcik) {
+            Button("E-posta Gönder") {
+                let konu = "Reklamsız Radyo Hakkında Görüş/Öneri".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                if let u = URL(string: "mailto:tknljderslblrlk@gmail.com?subject=\(konu)") {
+                    adresAc(u) { basarili in if !basarili { bildirim.goster("E-posta uygulaması bulunamadı!") } }
+                }
+            }
+            Button("Kapat", role: .cancel) {}
+        } message: {
+            let surum = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+            Text("Reklamsız Radyo v\(surum)\nGeliştirici: Fırat Ataş\n\nGörüş ve önerileriniz için iletişime geçebilirsiniz.")
+        }
         .sheet(isPresented: Binding(get: { asistan.acik && !oynaticiAcik }, set: { if !$0 && asistan.acik { asistan.kapat() } }),
                onDismiss: {
             asistanGorunur = false
@@ -172,8 +190,8 @@ struct AnaEkran: View {
             .accessibilityLabel("Sesli Asistan")
             Menu {
                 Button("Ekle") { eklemeAcik = true }
-                Button("Ayarlar") { bildirim.goster("Ayarlar sonraki deneme sürümünde gelecek.") }
-                Button("Hakkında") { bildirim.goster("Hakkında sonraki deneme sürümünde gelecek.") }
+                Button("Ayarlar") { ayarlarAcik = true }
+                Button("Hakkında") { hakkindaAcik = true }
             } label: {
                 Image(systemName: "ellipsis.circle").font(.title2)
             }

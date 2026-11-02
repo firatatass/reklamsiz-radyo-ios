@@ -158,6 +158,91 @@ final class Depo: ObservableObject {
         kaydet()
     }
 
+    // MARK: Ayarlar işlemleri (Android showRestoreDefaultListWarning, showDeleteAllWarning, importPlaylist, exportJson, importJson)
+
+    /// "Varsayılan Radyo Listesini Yükle": her şey silinir, liste ilk günkü haline döner.
+    func varsayilaniYukle() {
+        kayitlar = []
+        silinenler = []
+        ayar.set(false, forKey: "user_deleted_all")
+        esitle()
+    }
+
+    /// "Tüm Listeyi Temizle": listeden gelen hiçbir kayıt geri gelmez.
+    func tumunuSil() {
+        kayitlar = []
+        for t in Tur.allCases { guncelListe(t).forEach { silinenler.insert($0.id) } }
+        ayar.set(true, forKey: "user_deleted_all")
+        kaydet()
+    }
+
+    /// M3U veya PLS dosyasındaki yayınları ekler, eklenen sayısını döner.
+    func listeIceAktar(_ metin: String) -> Int {
+        let satirlar = metin.components(separatedBy: .newlines)
+        var eklenen = 0
+        if satirlar.contains(where: { $0.range(of: "[playlist]", options: .caseInsensitive) != nil }) {
+            var adresler: [(String, String)] = []
+            var basliklar: [String: String] = [:]
+            for satir in satirlar {
+                let t = satir.trimmingCharacters(in: .whitespaces)
+                guard let esittir = t.firstIndex(of: "=") else { continue }
+                let sol = String(t[..<esittir])
+                let sag = String(t[t.index(after: esittir)...]).trimmingCharacters(in: .whitespaces)
+                let anahtar = sol.filter(\.isNumber)
+                if sol.lowercased().hasPrefix("file") {
+                    adresler.append((anahtar, sag))
+                } else if sol.lowercased().hasPrefix("title") {
+                    basliklar[anahtar] = sag
+                }
+            }
+            for (anahtar, url) in adresler where url.lowercased().hasPrefix("http") {
+                sonNo += 1
+                kayitlar.append(Kayit(no: sonNo, ad: basliklar[anahtar] ?? "Bilinmeyen Radyo", url: url))
+                eklenen += 1
+            }
+        } else {
+            var ad = "Bilinmeyen Radyo"
+            for satir in satirlar {
+                let t = satir.trimmingCharacters(in: .whitespaces)
+                if t.uppercased().hasPrefix("#EXTINF") {
+                    let sonra = t.contains("\"") ? String(t[t.range(of: "\"", options: .backwards)!.upperBound...]) : t
+                    let a = sonra.firstIndex(of: ",").map { String(sonra[sonra.index(after: $0)...]).trimmingCharacters(in: .whitespaces) } ?? ""
+                    ad = a.isEmpty ? "Bilinmeyen Radyo" : a
+                } else if t.lowercased().hasPrefix("http") {
+                    sonNo += 1
+                    kayitlar.append(Kayit(no: sonNo, ad: ad, url: t))
+                    eklenen += 1
+                    ad = "Bilinmeyen Radyo"
+                }
+            }
+        }
+        kaydet()
+        return eklenen
+    }
+
+    /// "Tümünü Yedekle": Android'deki yedek dosyasıyla aynı biçim ([{"name","url"}]).
+    func yedekVerisi() -> Data {
+        let dizi = kayitlar.map { ["name": $0.ad, "url": $0.url] }
+        return (try? JSONSerialization.data(withJSONObject: dizi, options: [.prettyPrinted])) ?? Data("[]".utf8)
+    }
+
+    /// "Geri Yükle": yedekteki yayınları ekler, eklenen sayısını döner. Dosya okunamazsa nil.
+    func yedektenYukle(_ veri: Data) -> Int? {
+        guard let dizi = try? JSONSerialization.jsonObject(with: veri) as? [[String: Any]] else { return nil }
+        var eklenen = 0
+        for o in dizi {
+            let ad = o["name"] as? String ?? "Bilinmeyen Radyo"
+            let url = o["url"] as? String ?? ""
+            if url.hasPrefix("http") {
+                sonNo += 1
+                kayitlar.append(Kayit(no: sonNo, ad: ad, url: url))
+                eklenen += 1
+            }
+        }
+        kaydet()
+        return eklenen
+    }
+
     // MARK: Kategori süzgeci (Android getCategoryFilteredList)
 
     func filtrele(_ liste: [Kayit], kategori aktif: String) -> [Kayit] {
