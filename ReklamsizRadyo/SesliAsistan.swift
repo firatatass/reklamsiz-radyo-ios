@@ -15,6 +15,8 @@ enum Hazirlik {
     static let kayit = true
     static let alarm = false
     static let sonrakiSurumMesaji = "Bu özellik bir sonraki deneme sürümünde eklenecek."
+    /// Kullanıcı kararı (02.11.2026): çalar saat ve zamanlı kayıt iPhone'da Android'deki gibi çalışamadığı için kaldırıldı.
+    static let alarmYokMesaji = "Çalar saat ve zamanlı kayıt özellikleri bu sürümde bulunmuyor."
 }
 
 /// Sesli asistan (Android VoiceAssistantManager'ın birebir karşılığı).
@@ -604,7 +606,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         // 14. Zamanlanmış kayıt
         if k.contains("zamanlanmis gorev") || k.contains("zamanli kayit") || k.contains("kayit gorevi") || k.contains("otomatik kayit") {
             if !Hazirlik.alarm {
-                let c = Hazirlik.sonrakiSurumMesaji
+                let c = Hazirlik.alarmYokMesaji
                 cevapYaz(c); konus(c); sonraKapat(3)
                 return
             }
@@ -644,7 +646,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         // 16. Çalar saat
         if k.contains("calar saat") || k.contains("alarm") || k.contains("sabah cal") || (k.contains("saat") && k.contains("kur")) || k.contains("beni uyandir") {
             if !Hazirlik.alarm {
-                let c = Hazirlik.sonrakiSurumMesaji
+                let c = Hazirlik.alarmYokMesaji
                 cevapYaz(c); konus(c); sonraKapat(3)
                 return
             }
@@ -699,7 +701,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return
         }
 
-        let c = "\"\(metin)\" komutunu anlayamadım. Bir radyo adı söyleyebilir, çalar saat veya zamanlayıcı kurabilir, ya da 'rehber' diyebilirsiniz."
+        let c = "\"\(metin)\" komutunu anlayamadım. Bir radyo adı söyleyebilir, zamanlayıcı kurabilir, ya da 'rehber' diyebilirsiniz."
         durumYaz(c, hata: true)
         konus(c, sonraDinle: true)
     }
@@ -1020,35 +1022,26 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     - "Kayıt al" veya "Kaydı başlat" (Çalan canlı yayını kaydeder)
     - "Kaydı durdur" (Yayındaki kaydı sonlandırır)
 
-    6. Çalar Saat & Alarm:
-    - "Çalar saat kur" (Asistan hangi radyo ve saati sorar)
-    - "A Haber için saat 8'e çalar saat kur"
-    - "Çalar saati iptal et" veya "Alarmları sil"
-
-    7. Zamanlanmış Görev:
-    - "Zamanlanmış görev kur" veya "Zamanlı kayıt"
-    - "Zamanlanmış kaydı iptal et"
-
-    8. Uyku Zamanlayıcı:
+    6. Uyku Zamanlayıcı:
     - "30 dakika zamanlayıcı kur" veya "1 saat sonra kapan"
     - "Zamanlayıcıyı iptal et"
 
-    9. Durum Öğrenme:
-    - "Aktif alarmlar", "Görevlerim" veya "Zamanlayıcı durumu"
+    7. Durum Öğrenme:
+    - "Zamanlayıcı durumu"
 
-    10. Favoriler:
+    8. Favoriler:
     - "Favorilere ekle" veya "Favoriye al" / "Favorilerden çıkar"
 
-    11. Veri ve Kota Limiti:
+    9. Veri ve Kota Limiti:
     - "Veri limitini sınırla", "Kotayı ayarla" veya "İnterneti sınırla"
 
-    12. Uygulama:
+    10. Uygulama:
     - "Uygulamayı kapat" veya "Çıkış yap"
     - "Rehber" veya "Yardım"
     """
 
     func rehberiSeslendir() {
-        konus("Sesli asistan komutları: Radyo dinlemek için radyonun adını, televizyon kanalı açmak için kanalın adını söyleyin; örneğin Kral FM aç ya da TRT 1 aç. Aynı adlı radyo ve TV kanalı varsa sonuna TV veya radyo ekleyin; örneğin A Haber TV aç. Şu an ne çalıyor diyebilir, favorilerim veya kayıtlarım diyerek sekmeler arasında geçebilirsiniz. Oynat, durdur, sonraki veya önceki radyo diyebilirsiniz. Yayını durdur diyerek yayını kapatıp ana ekrana dönebilirsiniz. Sesi aç veya kıs diyebilirsiniz. Dini, haber, pop, slow gibi kategorilere geçebilirsiniz. Çalar saat, kayıt, zamanlayıcı veya kota limiti kurabilirsiniz. Uygulamayı kapat diyerek çıkabilirsiniz.")
+        konus("Sesli asistan komutları: Radyo dinlemek için radyonun adını, televizyon kanalı açmak için kanalın adını söyleyin; örneğin Kral FM aç ya da TRT 1 aç. Aynı adlı radyo ve TV kanalı varsa sonuna TV veya radyo ekleyin; örneğin A Haber TV aç. Şu an ne çalıyor diyebilir, favorilerim veya kayıtlarım diyerek sekmeler arasında geçebilirsiniz. Oynat, durdur, sonraki veya önceki radyo diyebilirsiniz. Yayını durdur diyerek yayını kapatıp ana ekrana dönebilirsiniz. Sesi aç veya kıs diyebilirsiniz. Dini, haber, pop, slow gibi kategorilere geçebilirsiniz. Kayıt alabilir, zamanlayıcı veya kota limiti kurabilirsiniz. Uygulamayı kapat diyerek çıkabilirsiniz.")
     }
 
     // MARK: Metin ayrıştırma (Android parseCategory, parseTab, parseTime, parseDurationMinutes)

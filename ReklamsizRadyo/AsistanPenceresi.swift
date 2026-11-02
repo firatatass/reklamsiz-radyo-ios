@@ -62,7 +62,6 @@ struct AsistanPenceresi: View {
                     .accessibilityAddTraits(.isHeader)
 
                 ornek("A Haber Aç", "Örnek Komut: A Haber Aç", "A Haber aç")
-                ornek("Çalar Saat Kur", "Örnek Komut: Çalar Saat Kur", "Çalar saat kur")
                 ornek("30 Dk Zamanlayıcı", "Örnek Komut: 30 Dakika Zamanlayıcı Kur", "30 dakika zamanlayıcı")
                 ornek("Durdur", "Örnek Komut: Radyoyu Durdur", "Yayını durdur")
                 ornek("Uygulamayı Kapat", "Örnek Komut: Uygulamayı Kapat", "Uygulamayı kapat")

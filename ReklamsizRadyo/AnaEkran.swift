@@ -180,10 +180,6 @@ struct AnaEkran: View {
 
     private var ustCubuk: some View {
         HStack(spacing: 12) {
-            Button { bildirim.goster("Çalar saatler ve zamanlanmış görevler sonraki deneme sürümünde gelecek.") } label: {
-                Image(systemName: "line.3.horizontal").font(.title2)
-            }
-            .accessibilityLabel("Menü")
             Text("Reklamsız Radyo")
                 .font(.title2.bold())
                 .accessibilityAddTraits(.isHeader)
