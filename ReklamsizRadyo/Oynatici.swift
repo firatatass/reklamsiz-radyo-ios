@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import MediaPlayer
 
 /// Veri sınırı dolunca gösterilen uyarı (Android RADIO_LIMIT_REACHED).
@@ -30,6 +31,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var player: AVPlayer?
     private var kisik = false
     private var uykuGorevi: Task<Void, Never>?
+    private var kayitAboneligi: AnyCancellable?
     private var gozlemciler: [NSKeyValueObservation] = []
     private var bildirimGozlemcisi: NSObjectProtocol?
     private var zamanlayici: Timer?
@@ -41,6 +43,18 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         super.init()
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         uzaktanKomutlariKur()
+        kayitAboneligi = Kaydedici.shared.$kayitta.sink { [weak self] v in self?.kayitYapiliyor = v }
+    }
+
+    // MARK: Kayıt (Android START_RECORD / STOP_RECORD)
+
+    func kaydiBaslat() {
+        guard let k = calan, !k.dosyaMi else { return }
+        Kaydedici.shared.baslat(url: k.url, ad: k.ad)
+    }
+
+    func kaydiDurdur() {
+        Kaydedici.shared.durdur()
     }
 
     // MARK: Önceki / Sonraki
@@ -73,6 +87,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     private func cal(_ k: Kayit) {
+        // Android'de de başka yayına geçince süren kayıt bitirilip kaydedilir.
+        if Kaydedici.shared.kayitta { Kaydedici.shared.durdur() }
         temizle()
         calan = k
         bilgi = ""
@@ -143,6 +159,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     func durdur() {
+        if Kaydedici.shared.kayitta { Kaydedici.shared.durdur() }
         temizle()
         calan = nil
         caliyor = false
@@ -354,7 +371,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     /// Android'deki gibi: "adres:port" ile biten Shoutcast yayınlarının sonuna "/;" eklenir.
-    static func calinabilirAdres(_ adres: String) -> String {
+    nonisolated static func calinabilirAdres(_ adres: String) -> String {
         if adres.range(of: "^https?://[^/:]+:[0-9]+/?$", options: [.regularExpression, .caseInsensitive]) != nil {
             return adres + (adres.hasSuffix("/") ? ";" : "/;")
         }
@@ -362,7 +379,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     /// streamtheworld sunucuları tarayıcı kimliğiyle gelen bağlantıyı birkaç saniye sonra kesiyor (Süper FM sorunu).
-    static func kimlik(_ url: URL) -> String {
+    nonisolated static func kimlik(_ url: URL) -> String {
         if (url.host ?? "").lowercased().hasSuffix("streamtheworld.com") {
             return "Mozilla/5.0 (iPhone) ReklamsizRadyo/1.0"
         }

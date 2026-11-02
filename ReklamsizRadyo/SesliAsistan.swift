@@ -12,7 +12,7 @@ enum AsistanIstegi: Equatable {
 
 /// Henüz yazılmamış özellikler: hazır olunca true yapılacak.
 enum Hazirlik {
-    static let kayit = false
+    static let kayit = true
     static let alarm = false
     static let sonrakiSurumMesaji = "Bu özellik bir sonraki deneme sürümünde eklenecek."
 }
@@ -579,6 +579,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             if !Hazirlik.kayit {
                 c = Hazirlik.sonrakiSurumMesaji
             } else if yayinAktif {
+                oynatici?.kaydiBaslat()
                 c = "Canlı yayın kaydı başlatıldı."
             } else {
                 c = "Canlı yayın kaydı başlatılamadı. Şu anda çalan bir radyo yayını bulunmuyor."
@@ -591,6 +592,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             if !Hazirlik.kayit {
                 c = Hazirlik.sonrakiSurumMesaji
             } else if oynatici?.kayitYapiliyor == true {
+                oynatici?.kaydiDurdur()
                 c = "Yayın kaydı durduruldu ve kaydedildi."
             } else {
                 c = "Şu anda devam eden bir ses kaydı bulunmuyor."

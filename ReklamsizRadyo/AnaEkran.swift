@@ -90,6 +90,10 @@ struct AnaEkran: View {
             }
         }
         .onAppear { if sekme == "rec" { kayitDosyalari = depo.kayitDosyalari() } }
+        .onChange(of: oynatici.kayitYapiliyor) { _ in
+            // Kayıt bitince Kayıtlar sekmesi açıksa yeni dosya görünsün (dönüştürme birkaç saniye sürebilir).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { if sekme == "rec" { kayitDosyalari = depo.kayitDosyalari() } }
+        }
         .fullScreenCover(isPresented: $oynaticiAcik, onDismiss: {
             oynaticiGorunur = false
             odagiGeriVer()

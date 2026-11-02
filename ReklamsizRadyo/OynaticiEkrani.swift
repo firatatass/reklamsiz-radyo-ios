@@ -54,7 +54,7 @@ struct OynaticiEkrani: View {
 
                     if !k.dosyaMi {
                         BuyukDugme(baslik: oynatici.kayitYapiliyor ? "Kaydı Durdur" : "Kaydı Başlat") {
-                            bildirim.goster("Kayıt özelliği sonraki deneme sürümünde gelecek.")
+                            if oynatici.kayitYapiliyor { oynatici.kaydiDurdur() } else { oynatici.kaydiBaslat() }
                         }
                     }
 
