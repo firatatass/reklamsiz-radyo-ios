@@ -1,0 +1,40 @@
+name: Herkese Açık TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      derleme:
+        description: "Derleme numarası (boş: en son)"
+        required: false
+
+jobs:
+  hazirla:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ vars.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
+      TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      BUNDLE_ID: ${{ vars.BUNDLE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apple anahtarını yerleştir
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          ANAHTAR="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$ANAHTAR"
+          grep -q "BEGIN PRIVATE KEY" "$ANAHTAR" || { echo "Anahtar biçimi hatalı"; exit 1; }
+          echo "ASC_KEY_PATH=$ANAHTAR" >> "$GITHUB_ENV"
+
+      - name: Test bilgileri, dış grup, beta incelemesi
+        env:
+          BETA_EPOSTA: ${{ secrets.BETA_EPOSTA }}
+          BETA_TELEFON: ${{ secrets.BETA_TELEFON }}
+        run: |
+          python3 -m pip install --quiet pyjwt cryptography requests
+          PYTHONPATH=scripts python3 scripts/dis_test.py ${{ inputs.derleme }}
+
+      - name: Temizlik
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
