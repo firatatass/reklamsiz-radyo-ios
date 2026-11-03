@@ -98,7 +98,7 @@ struct AnaEkran: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { gelistiriciBilgisiAcik = true }
             }
         }
-        .alert("Uygulamanın geliştirilmesine verdiği desteklerden dolayı Ahmet Yılmaz'a teşekkür ederiz.", isPresented: $gelistiriciBilgisiAcik) {
+        .alert("Uygulamanın geliştirilmesindeki katkılarından dolayı Ahmet Yılmaz'a teşekkür ederiz.", isPresented: $gelistiriciBilgisiAcik) {
             Button("Kapat", role: .cancel) { gelistiriciBilgisiGosterildi = true }
         }
         .onChange(of: oynatici.kayitYapiliyor) { _ in
