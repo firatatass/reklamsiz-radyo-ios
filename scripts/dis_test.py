@@ -81,6 +81,8 @@ print("Dış grup hazır, derleme eklendi")
 r = api("POST", "betaAppReviewSubmissions", {"data": {"type": "betaAppReviewSubmissions",
     "relationships": {"build": {"data": {"type": "builds", "id": derleme["id"]}}}}}, kabul=(409, 422))
 print("İnceleme gönderimi:", r.get("data", {}).get("attributes") or r.get("errors", [{}])[0].get("detail"))
+durum = api("GET", f"builds/{derleme['id']}/betaAppReviewSubmission", kabul=(404,)).get("data") or {}
+print("İNCELEME DURUMU:", (durum.get("attributes") or {}).get("betaReviewState"))
 
 grup = api("GET", f"betaGroups/{grup['id']}")["data"]
 print("HERKESE AÇIK BAĞLANTI:", grup["attributes"].get("publicLink"))
