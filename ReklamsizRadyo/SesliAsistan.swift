@@ -708,24 +708,26 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     // MARK: Belirsiz radyo seçimi
 
-    private func belirsizRadyolar(_ adaylar: [Kayit], _ eylem: String) {
+    private func belirsizRadyolar(_ tumAdaylar: [Kayit], _ eylem: String) {
+        // Sesle en fazla 4 seçenek seçilebildiği için ilk 4'ü okunur ve sorulur.
+        let adaylar = Array(tumAdaylar.prefix(4))
         netlestirmeAdaylari = adaylar
         netlestirmeEylemi = eylem
         durumMakinesi = .radyoNetlestirme
         denemeSayisi = 0
         let sayi: String
-        switch adaylar.count {
+        switch tumAdaylar.count {
         case 2: sayi = "İki tane sonuç bulundu"
         case 3: sayi = "Üç tane sonuç bulundu"
         case 4: sayi = "Dört tane sonuç bulundu"
-        default: sayi = "\(adaylar.count) tane sonuç bulundu"
+        default: sayi = "\(tumAdaylar.count) tane sonuç bulundu, ilk dördü şunlar"
         }
         let karisik = adaylar.contains { tvMi($0) } && adaylar.contains { !tvMi($0) }
-        let adlar = adaylar.prefix(3).enumerated().map { i, r in
+        let adlar = adaylar.enumerated().map { i, r in
             let etiket = karisik ? (tvMi(r) ? " TV kanalı" : " radyo") : ""
             return "\(i + 1). \(r.ad)\(etiket)"
         }.joined(separator: ", ")
-        let p = "\(sayi), hangisini açayım? \(adlar)"
+        let p = "\(sayi): \(adlar). Hangisini açayım?"
         durumYaz(p); cevapYaz(p); konus(p, sonraDinle: true)
     }
 
