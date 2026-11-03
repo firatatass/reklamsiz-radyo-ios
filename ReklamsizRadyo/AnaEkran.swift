@@ -25,8 +25,8 @@ struct AnaEkran: View {
     @State private var kaydirHedefi: Int?
     /// Asistan penceresi kapanırken gelen istek, pencere tamamen kapandıktan sonra yapılır
     /// (iPhone/iPad bir pencere kapanırken başka pencere açamıyor).
-    /// İlk kurulumda bir kez gösterilen geliştirici bilgisi; "Kapat"a basılınca bir daha gösterilmez.
-    @AppStorage("gelistirici_bilgisi_gosterildi") private var gelistiriciBilgisiGosterildi = false
+    /// İlk kurulumda bir kez gösterilen teşekkür yazısı; "Kapat"a basılınca bir daha gösterilmez.
+    @AppStorage("tesekkur_bilgisi_gosterildi") private var gelistiriciBilgisiGosterildi = false
     @State private var gelistiriciBilgisiAcik = false
     @State private var ayarlarAcik = false
     @State private var hakkindaAcik = false
@@ -98,7 +98,7 @@ struct AnaEkran: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { gelistiriciBilgisiAcik = true }
             }
         }
-        .alert("Bu uygulama Ahmet Yılmaz ve Fırat Ataş tarafından geliştirilmiştir.", isPresented: $gelistiriciBilgisiAcik) {
+        .alert("Uygulamanın geliştirilmesine verdiği desteklerden dolayı Ahmet Yılmaz'a teşekkür ederiz.", isPresented: $gelistiriciBilgisiAcik) {
             Button("Kapat", role: .cancel) { gelistiriciBilgisiGosterildi = true }
         }
         .onChange(of: oynatici.kayitYapiliyor) { _ in
