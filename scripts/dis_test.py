@@ -8,11 +8,13 @@ import sys
 from asc import BUNDLE_ID, api
 
 GIZLILIK = "https://docs.google.com/document/d/1s3Zy--ZsukAUdrutJhnYgRQ92vbCI7LlF1AcAa7jCao/edit?usp=drivesdk"
-ACIKLAMA = ("Erişilebilir Reklamsız Radyo; Türkiye'nin radyo ve TV yayınlarını reklamsız dinlemenizi sağlar. "
-            "VoiceOver ile tam uyumludur. Sesli asistanla radyo açabilir, yayınları kaydedebilir, "
-            "favorilerinizi düzenleyebilir ve uyku zamanlayıcısı kurabilirsiniz.")
-YENILIKLER = ("Radyo ve TV yayınlarını dinleyin, sesli asistanı, kaydı (MP3, M4A, WAV), favorileri, "
-              "uyku zamanlayıcısını ve ayarları deneyin. Sorunları TestFlight üzerinden bildirebilirsiniz.")
+ACIKLAMA = ("Erişilebilir Reklamsız Radyo, yüzlerce radyo ve TV kanalını tek bir yerden, uygulama içinde "
+            "hiçbir reklam olmadan dinlemenizi sağlar. Görme engelli kullanıcılar düşünülerek geliştirildi ve "
+            "VoiceOver ile tam uyumludur. Sesli asistanla istediğiniz kanalı açabilir, yayınları MP3, M4A veya "
+            "WAV olarak kaydedebilir, favori listenizi oluşturabilir ve uyku zamanlayıcısı kurabilirsiniz.")
+YENILIKLER = ("Bu deneme sürümünde radyo ve TV yayınlarını dinlemeyi, sesli asistanı, yayın kaydını, "
+              "favorileri, uyku zamanlayıcısını ve ayarları deneyebilirsiniz. Karşılaştığınız sorunları ve "
+              "önerilerinizi TestFlight üzerinden bize iletebilirsiniz.")
 NOT = ("Uygulama hesap gerektirmez. Mikrofon yalnızca sesli asistan için, kullanıcı asistanı açınca kullanılır. "
        "Radyo ve TV listeleri GitHub'daki açık listeden gelir.")
 GRUP_ADI = "Herkese Açık"
