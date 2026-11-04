@@ -12,7 +12,9 @@ ACIKLAMA = ("Erişilebilir Reklamsız Radyo, yüzlerce radyo ve TV kanalını te
             "hiçbir reklam olmadan dinlemenizi sağlar. Görme engelli kullanıcılar düşünülerek geliştirildi ve "
             "VoiceOver ile tam uyumludur. Sesli asistanla istediğiniz kanalı açabilir, yayınları MP3, M4A veya "
             "WAV olarak kaydedebilir, favori listenizi oluşturabilir ve uyku zamanlayıcısı kurabilirsiniz.")
-YENILIKLER = ("Bu deneme sürümünde radyo ve TV yayınlarını dinlemeyi, sesli asistanı, yayın kaydını, "
+YENILIKLER = ("Yenilik: Sesli asistan birden fazla sonuç bulduğunda seçeneklerin hepsini sonuna kadar okuyor, "
+              "ardından hangisini açacağını soruyor. "
+              "Bu deneme sürümünde radyo ve TV yayınlarını dinlemeyi, sesli asistanı, yayın kaydını, "
               "favorileri, uyku zamanlayıcısını ve ayarları deneyebilirsiniz. Karşılaştığınız sorunları ve "
               "önerilerinizi TestFlight üzerinden bize iletebilirsiniz.")
 NOT = ("Uygulama hesap gerektirmez. Mikrofon yalnızca sesli asistan için, kullanıcı asistanı açınca kullanılır. "
