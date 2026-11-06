@@ -32,6 +32,8 @@ struct ReklamsizRadyoApp: App {
                 .onChange(of: sahne) { s in
                     // Android'de de sallama sadece uygulama ekrandayken dinlenir (onResume/onPause).
                     if s == .active { SallamaAlgilayici.shared.baslat() } else { SallamaAlgilayici.shared.durdur() }
+                    // Liste açılıp kapatıldıysa ya da ilk açılışta inmediyse uygulama öne gelince öğrenir.
+                    if s == .active { Task { await depo.internettenGuncelle() } }
                 }
         }
     }

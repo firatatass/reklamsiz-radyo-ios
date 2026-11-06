@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Ana ekran (Android MainActivity): üst çubuk, arama, kategoriler, sekmeler, liste ve alttaki küçük oynatıcı.
 struct AnaEkran: View {
@@ -16,6 +17,8 @@ struct AnaEkran: View {
     @State private var oynaticiAcik = false
     @State private var duzenlenen: Kayit?
     @State private var eklemeAcik = false
+    @State private var listeUyarisiAcik = false
+    @State private var listeSecici = false
     @State private var silinecek: Kayit?
     @State private var tvUyarisiIcin: Kayit?
     @State private var tvUyarisiSonrasi: Kayit?
@@ -94,12 +97,35 @@ struct AnaEkran: View {
         }
         .onAppear {
             if sekme == "rec" { kayitDosyalari = depo.kayitDosyalari() }
+            listeUyarisiniGoster()
             if !gelistiriciBilgisiGosterildi {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { gelistiriciBilgisiAcik = true }
             }
         }
         .alert("Uygulamanın geliştirilmesindeki katkılarından dolayı Ahmet Yılmaz'a teşekkür ederiz.", isPresented: $gelistiriciBilgisiAcik) {
             Button("Kapat", role: .cancel) { gelistiriciBilgisiGosterildi = true }
+        }
+        .alert("Radyo Listesi Boş", isPresented: $listeUyarisiAcik) {
+            Button("Link Ekle") { sonra { eklemeAcik = true } }
+            Button("Liste Ekle") { sonra { listeSecici = true } }
+            Button("Kapat", role: .cancel) {}
+        } message: {
+            Text("Uygulamada hazır radyo listesi bulunmuyor. Dinlemek istediğiniz radyonun linkini ya da kendi M3U veya PLS listenizi ekleyebilirsiniz.")
+        }
+        .fileImporter(isPresented: $listeSecici, allowedContentTypes: [.item]) { listeDosyasiSecildi($0) }
+        .onChange(of: depo.listeKapali) { kapali in
+            // Liste kapanınca çalan yayın da durur. Kaydedilmiş dosya dinleniyorsa dokunulmaz.
+            if kapali, let k = oynatici.calan, !k.dosyaMi {
+                oynaticiAcik = false
+                oynatici.durdur()
+            }
+        }
+        .onChange(of: listeUyarisiGerekli) { gerekli in
+            if gerekli { listeUyarisiniGoster() }
+        }
+        .onChange(of: gelistiriciBilgisiGosterildi) { _ in
+            // Teşekkür yazısı açıkken ikinci uyarı açılamaz; o kapandıktan sonra gösterilir.
+            sonra { listeUyarisiniGoster() }
         }
         .onChange(of: oynatici.kayitYapiliyor) { _ in
             // Kayıt bitince Kayıtlar sekmesi açıksa yeni dosya görünsün (dönüştürme birkaç saniye sürebilir).
@@ -271,15 +297,65 @@ struct AnaEkran: View {
         .padding(.vertical, 4)
     }
 
+    // MARK: Hazır liste kapalıyken
+
+    private var listeUyarisiGerekli: Bool { depo.listeKapali && depo.kayitlar.isEmpty }
+
+    private func listeUyarisiniGoster() {
+        if listeUyarisiGerekli && gelistiriciBilgisiGosterildi { listeUyarisiAcik = true }
+    }
+
+    /// Uyarı kapanırken başka pencere açılamadığı için kısa bir süre sonra çalışır.
+    private func sonra(_ eylem: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: eylem)
+    }
+
+    private func listeDosyasiSecildi(_ sonuc: Result<URL, Error>) {
+        guard case .success(let url) = sonuc else { return }
+        let erisim = url.startAccessingSecurityScopedResource()
+        defer { if erisim { url.stopAccessingSecurityScopedResource() } }
+        guard let veri = try? Data(contentsOf: url) else {
+            bildirim.goster("Dosya okuma hatası!")
+            return
+        }
+        let sayi = depo.listeIceAktar(String(decoding: veri, as: UTF8.self))
+        bildirim.goster("\(sayi) radyo listeye eklendi!")
+    }
+
     // MARK: Liste
 
     @ViewBuilder private var liste: some View {
         let ogeler = gorunen
         if ogeler.isEmpty {
             Spacer()
-            Text(sekme == "rec" ? "Kayıt Bulunamadı" : sekme == "fav" ? "Favori Radyo Bulunamadı" : "Radyo Bulunamadı")
-                .font(.title3)
-                .foregroundColor(.secondary)
+            if sekme != "rec" && sekme != "fav" && listeUyarisiGerekli {
+                Text("Radyo Listesi Boş. Dinlemek İstediğiniz Radyonun Linkini ya da Kendi Listenizi Ekleyin.")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                Button("Link Ekle") { eklemeAcik = true }
+                    .font(.title3)
+                    .frame(minHeight: 44)
+                Button("Liste Ekle") { listeSecici = true }
+                    .font(.title3)
+                    .frame(minHeight: 44)
+            } else if sekme != "rec" && sekme != "fav" && depo.listeEksik && !depo.listeKapali {
+                Text(depo.listeIndiriliyor ? "Liste İndiriliyor" : "Liste İndirilemedi. İnternet Bağlantınızı Kontrol Edin.")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                if !depo.listeIndiriliyor {
+                    Button("Yeniden Dene") { Task { await depo.internettenGuncelle() } }
+                        .font(.title3)
+                        .frame(minHeight: 44)
+                }
+            } else {
+                Text(sekme == "rec" ? "Kayıt Bulunamadı" : sekme == "fav" ? "Favori Radyo Bulunamadı" : "Radyo Bulunamadı")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+            }
             Spacer()
         } else {
             ScrollViewReader { kaydirici in

@@ -45,7 +45,9 @@ struct AyarlarEkrani: View {
                 satir("Sekme Sırasını Değiştir") { altPencere = .sekme }
                 satir("Kayıt Formatı") { altPencere = .bicim }
                 satir("Tema Seçimi") { altPencere = .tema }
-                satir("Varsayılan Radyo Listesini Yükle") { varsayilanUyarisi = true }
+                if !depo.listeKapali {
+                    satir("Varsayılan Radyo Listesini Yükle") { varsayilanUyarisi = true }
+                }
                 satir("Tüm Listeyi Temizle") { temizlemeUyarisi = true }
             }
             .navigationTitle("Ayarlar")

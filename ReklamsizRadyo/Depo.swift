@@ -66,6 +66,13 @@ final class Depo: ObservableObject {
     @Published private(set) var kayitlar: [Kayit] = []
     /// Kategori, veri sayacı gibi ayarlar değişince ekranın yenilenmesi için.
     @Published private(set) var degisim = 0
+    /// Liste indirilirken true. Açılışta indirme hemen başladığı için ilk değer true.
+    @Published private(set) var listeIndiriliyor = true
+    private var guncelleniyor = false
+    /// Liste GitHub'dan kapatıldıysa true. Kapalıyken kayıtların hepsi gizlenir, ek radyolar gösterilmez.
+    @Published private(set) var listeKapali = false
+    /// Kapatılınca gizlenen kayıtlar. Silinmez; liste açılınca sırası ve favorileriyle aynen geri gelir.
+    private var gizliKayitlar: [Kayit] = []
 
     /// Android'deki gibi radio-browser.info'dan gelen ek Türk radyoları (sadece bellekte, her açılışta yeniden alınır).
     @Published private(set) var apiKayitlar: [Kayit] = []
@@ -84,18 +91,29 @@ final class Depo: ObservableObject {
         var onek: String { self == .radyo ? "r-" : "t-" }
     }
 
+    // Önce GitHub: jsDelivr saatlerce eski dosyayı verebilir, liste kapatılınca uygulama geç öğrenir.
     private let tabanlar = [
-        "https://cdn.jsdelivr.net/gh/firatatass/reklamsiz-radyo-liste@main/",
         "https://raw.githubusercontent.com/firatatass/reklamsiz-radyo-liste/main/",
+        "https://cdn.jsdelivr.net/gh/firatatass/reklamsiz-radyo-liste@main/",
     ]
+
+    private enum Indirme {
+        case metin(String)
+        /// Sunucular cevap verdi ama dosya yok (404): liste kaldırılmış demektir.
+        case yok
+        /// İnternet yok ya da sunucu hatası: listenin durumu bilinmiyor.
+        case hata
+    }
 
     private struct Kayitli: Codable {
         var kayitlar: [Kayit]
         var silinenler: [String]
         var sonNo: Int
+        var gizli: [Kayit]?
     }
 
     init() {
+        listeKapali = ayar.bool(forKey: "liste_kapali")
         yukle()
         if let m = ayar.string(forKey: "deleted_api_urls"), let d = try? JSONSerialization.jsonObject(with: Data(m.utf8)) as? [String] {
             silinenApi = Set(d)
@@ -198,10 +216,20 @@ final class Depo: ObservableObject {
         ayar.removeObject(forKey: "deleted_api_urls")
         ayar.set(false, forKey: "user_deleted_all")
         esitle()
+        // Liste daha önce hiç indirilmediyse internetten gelir.
+        Task { await internettenGuncelle() }
     }
 
     /// "Tüm Listeyi Temizle": listeden gelen hiçbir kayıt geri gelmez.
     func tumunuSil() {
+        // Liste kapalıyken sadece görünen kayıtlar silinir, gizlenenler açılınca geri gelir.
+        if listeKapali {
+            kayitlar = []
+            kaydet()
+            return
+        }
+        // İndirilmiş liste olmasa da eldeki kayıtlar sonradan geri gelmesin.
+        kayitlar.compactMap { $0.kaynak }.forEach { silinenler.insert($0) }
         kayitlar = []
         for t in Tur.allCases { guncelListe(t).forEach { silinenler.insert($0.id) } }
         silinenApi = []
@@ -298,7 +326,7 @@ final class Depo: ObservableObject {
     }
 
     func radioBrowserAl() async {
-        guard let url = URL(string: "https://de1.api.radio-browser.info/json/stations/search?countrycode=TR&hidebroken=true&lastcheckok=1&order=clickcount&reverse=true&limit=500") else { return }
+        guard !listeKapali, let url = URL(string: "https://de1.api.radio-browser.info/json/stations/search?countrycode=TR&hidebroken=true&lastcheckok=1&order=clickcount&reverse=true&limit=500") else { return }
         var istek = URLRequest(url: url)
         istek.setValue("ReklamsizRadyo/3.0", forHTTPHeaderField: "User-Agent")
         istek.timeoutInterval = 20
@@ -321,6 +349,8 @@ final class Depo: ObservableObject {
             yeni.append(Kayit(no: -100_000 - i, ad: ad, url: adres))
             if kat != "Tümü" { kategoriler[adres] = kat }
         }
+        // İstek sürerken liste kapatılmış olabilir.
+        guard !listeKapali else { return }
         apiKayitlar = yeni
         apiKategoriler = kategoriler
         degisim += 1
@@ -382,20 +412,19 @@ final class Depo: ObservableObject {
 
     private func onbellek(_ t: Tur) -> URL { klasor.appendingPathComponent("uzak_" + t.dosya) }
 
-    /// Önce en son indirilen liste, yoksa uygulamanın içindeki liste.
+    /// En son internetten indirilen liste. Uygulamanın içinde gömülü liste yoktur.
     private func guncelListe(_ t: Tur) -> [ListeGirdisi] {
-        if let m = try? String(contentsOf: onbellek(t), encoding: .utf8) {
-            let l = M3U.oku(m)
-            if !l.isEmpty { return l }
-        }
-        if let u = Bundle.main.url(forResource: t.anahtar, withExtension: "m3u"),
-           let m = try? String(contentsOf: u, encoding: .utf8) {
-            return M3U.oku(m)
-        }
-        return []
+        guard let m = try? String(contentsOf: onbellek(t), encoding: .utf8) else { return [] }
+        return M3U.oku(m)
+    }
+
+    /// Radyo ya da TV listesi henüz hiç indirilemediyse true.
+    var listeEksik: Bool {
+        Tur.allCases.contains { !FileManager.default.fileExists(atPath: onbellek($0).path) }
     }
 
     private func esitle() {
+        guard !listeKapali else { return }
         for t in Tur.allCases {
             let girdiler = guncelListe(t)
             if girdiler.isEmpty { continue }
@@ -432,6 +461,28 @@ final class Depo: ObservableObject {
         kaydet()
     }
 
+    /// Liste kapatıldı: herkeste bütün kayıtlar gizlenir. Hiçbir şey silinmez, indirilen listeler de durur.
+    private func listeyiKapat() {
+        guard !listeKapali else { return }
+        listeKapali = true
+        ayar.set(true, forKey: "liste_kapali")
+        gizliKayitlar = kayitlar
+        kayitlar = []
+        apiKayitlar = []
+        apiKategoriler = [:]
+        kaydet()
+    }
+
+    /// Liste açıldı: gizlenen kayıtlar aynen geri gelir, kapalıyken eklenenler sona geçer.
+    private func listeyiAc() {
+        listeKapali = false
+        ayar.removeObject(forKey: "liste_kapali")
+        kayitlar = gizliKayitlar + kayitlar
+        gizliKayitlar = []
+        esitle()
+        Task { await radioBrowserAl() }
+    }
+
     /// Bir yayının linki değişince linke bağlı ayarları (kategori, veri sayacı, sınır) yeni linke taşır.
     private func adresAyarlariniTasi(_ eski: String, _ yeni: String) {
         guard eski != yeni else { return }
@@ -443,17 +494,54 @@ final class Depo: ObservableObject {
         }
     }
 
-    /// surum.json'a bakar; sürümü değişen listeyi indirir, doğrular ve saklar.
+    /// surum.json'a bakar; sürümü değişen ya da henüz indirilmemiş listeyi indirir, doğrular ve saklar.
     func internettenGuncelle() async {
-        guard let s = await indir("surum.json"),
-              let j = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any] else { return }
+        guard !guncelleniyor else { return }
+        guncelleniyor = true
+        listeIndiriliyor = true
+        defer {
+            guncelleniyor = false
+            listeIndiriliyor = false
+        }
+        var surumler: [String: Any]?
+        switch await indir("surum.json") {
+        case .metin(let s):
+            surumler = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any]
+        case .yok:
+            listeyiKapat()
+            return
+        case .hata:
+            break
+        }
+        // surum.json'daki "ios_aktif": false listeyi bu uygulamada herkes için kapatır.
+        if (surumler?["ios_aktif"] as? Bool) == false {
+            listeyiKapat()
+            return
+        }
+        var bosListeler = 0
         var degisti = false
         for t in Tur.allCases {
-            let uzak = (j[t.anahtar] as? Int) ?? 0
+            let onbellekVar = FileManager.default.fileExists(atPath: onbellek(t).path)
+            // Gömülü liste olmadığı için surum.json alınamasa da eksik liste indirilmeye çalışılır.
+            if surumler == nil && onbellekVar { continue }
+            let uzak = (surumler?[t.anahtar] as? Int) ?? 0
             let uygulanan = ayar.integer(forKey: "ver_" + t.anahtar)
-            if uzak <= uygulanan && FileManager.default.fileExists(atPath: onbellek(t).path) { continue }
-            guard let metin = await indir(t.dosya) else { continue }
+            if uzak <= uygulanan && onbellekVar { continue }
+            let metin: String
+            switch await indir(t.dosya) {
+            case .metin(let m):
+                metin = m
+            case .yok:
+                bosListeler += 1
+                continue
+            case .hata:
+                continue
+            }
             let girdiler = M3U.oku(metin)
+            if girdiler.isEmpty {
+                bosListeler += 1
+                continue
+            }
             let simdiki = guncelListe(t).count
             // Bozuk/yarım dosyaya karşı: çok az kayıt gelirse ya da kimlikler tekrarlıysa kabul etme.
             if girdiler.count < 10 || girdiler.count < simdiki / 2 || Set(girdiler.map(\.id)).count != girdiler.count { continue }
@@ -463,21 +551,35 @@ final class Depo: ObservableObject {
                 degisti = true
             }
         }
-        if degisti { esitle() }
+        // İki liste de kaldırılmış ya da boşaltılmışsa liste kapatılmış sayılır.
+        if surumler != nil && bosListeler == Tur.allCases.count {
+            listeyiKapat()
+            return
+        }
+        if listeKapali && (surumler != nil || degisti) {
+            listeyiAc()
+        } else if degisti {
+            esitle()
+        }
     }
 
-    private func indir(_ yol: String) async -> String? {
+    private func indir(_ yol: String) async -> Indirme {
+        var hepsi404 = true
         for taban in tabanlar {
             guard let url = URL(string: taban + yol) else { continue }
             var istek = URLRequest(url: url)
             istek.cachePolicy = .reloadIgnoringLocalCacheData
             istek.timeoutInterval = 10
-            if let (veri, cevap) = try? await URLSession.shared.data(for: istek),
-               (cevap as? HTTPURLResponse)?.statusCode == 200, !veri.isEmpty {
-                return String(decoding: veri, as: UTF8.self)
+            let kod: Int?
+            if let (veri, cevap) = try? await URLSession.shared.data(for: istek) {
+                kod = (cevap as? HTTPURLResponse)?.statusCode
+                if kod == 200 { return .metin(String(decoding: veri, as: UTF8.self)) }
+            } else {
+                kod = nil
             }
+            if kod != 404 { hepsi404 = false }
         }
-        return nil
+        return hepsi404 ? .yok : .hata
     }
 
     // MARK: Saklama
@@ -488,13 +590,14 @@ final class Depo: ObservableObject {
         guard let veri = try? Data(contentsOf: depoDosyasi),
               let k = try? JSONDecoder().decode(Kayitli.self, from: veri) else { return }
         kayitlar = k.kayitlar
+        gizliKayitlar = k.gizli ?? []
         silinenler = Set(k.silinenler)
         sonNo = k.sonNo
     }
 
     private func kaydet() {
         try? FileManager.default.createDirectory(at: klasor, withIntermediateDirectories: true)
-        let k = Kayitli(kayitlar: kayitlar, silinenler: Array(silinenler), sonNo: sonNo)
+        let k = Kayitli(kayitlar: kayitlar, silinenler: Array(silinenler), sonNo: sonNo, gizli: gizliKayitlar)
         if let veri = try? JSONEncoder().encode(k) { try? veri.write(to: depoDosyasi, options: .atomic) }
         degisim += 1
     }
