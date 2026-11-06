@@ -41,7 +41,9 @@ struct AyarlarEkrani: View {
                 satir("Uyku Zamanlayıcı") { altPencere = .uyku }
                 satir("Radyo Listesini İçe Aktar (M3U/PLS)") { dosyaIsi = .iceAktar; dosyaSecici = true }
                 satir("Tümünü Yedekle") { yedekAcik = true }
-                satir("Geri Yükle") { dosyaIsi = .geriYukle; dosyaSecici = true }
+                if !depo.listeKapali {
+                    satir("Geri Yükle") { dosyaIsi = .geriYukle; dosyaSecici = true }
+                }
                 satir("Sekme Sırasını Değiştir") { altPencere = .sekme }
                 satir("Kayıt Formatı") { altPencere = .bicim }
                 satir("Tema Seçimi") { altPencere = .tema }
