@@ -37,12 +37,12 @@ jobs:
           grep -q "BEGIN PRIVATE KEY" "$ANAHTAR" || { echo "Anahtar biçimi hatalı"; exit 1; }
           echo "ASC_KEY_PATH=$ANAHTAR" >> "$GITHUB_ENV"
 
-      # Normal derleme test derlemesidir. App Store'a gidecek derlemenin commit mesajında [magaza] yazmalı.
+      # Normal derleme test derlemesidir. App Store'a gidecek derlemenin commit mesajı [magaza] ile BAŞLAMALI.
       - name: Derleme türünü seç
         env:
           MESAJ: ${{ github.event.head_commit.message }}
         run: |
-          if [[ "$MESAJ" == *"[magaza]"* ]]; then
+          if [[ "$MESAJ" == "[magaza]"* ]]; then
             echo "Mağaza derlemesi"
             echo "KOSUL=" >> "$GITHUB_ENV"
           else
