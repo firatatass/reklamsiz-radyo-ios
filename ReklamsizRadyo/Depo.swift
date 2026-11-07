@@ -12,6 +12,8 @@ struct Kayit: Codable, Identifiable, Hashable {
     var dosyaMi: Bool { !url.lowercased().hasPrefix("http") }
 }
 
+enum FavoriYon { case yukari, asagi, enBasa, enSona }
+
 let TV_KATEGORI = "TV Kanalları"
 let OTOMATIK_KATEGORI = "Otomatik (İsimden Bul)"
 let KATEGORI_SECENEKLERI = [OTOMATIK_KATEGORI, "Pop", "Arabesk", "Haber", "Slow", "Spor", "Dini", "Oyun Havası", "Yerel", TV_KATEGORI]
@@ -79,6 +81,8 @@ final class Depo: ObservableObject {
 
     /// Kapatılınca gizlenen kayıtlar. Silinmez; liste açılınca sırası ve favorileriyle aynen geri gelir.
     private var gizliKayitlar: [Kayit] = []
+    /// Favoriler sekmesinin kullanıcı sırası. Kayıt numarası tutulur: link değişse de sıra bozulmaz.
+    private var favoriSirasi: [Int] = []
 
     /// Android'deki gibi radio-browser.info'dan gelen ek Türk radyoları (sadece bellekte, her açılışta yeniden alınır).
     @Published private(set) var apiKayitlar: [Kayit] = []
@@ -120,6 +124,7 @@ final class Depo: ObservableObject {
 
     init() {
         yukle()
+        favoriSirasi = ayar.array(forKey: "favori_sirasi") as? [Int] ?? []
         listeKapali = ayar.bool(forKey: "liste_kapali") || !cihazdaListeVar
         if let m = ayar.string(forKey: "deleted_api_urls"), let d = try? JSONSerialization.jsonObject(with: Data(m.utf8)) as? [String] {
             silinenApi = Set(d)
@@ -166,11 +171,46 @@ final class Depo: ObservableObject {
             // Ek radyo (radio-browser): Android'deki gibi favorilere alınınca kendi listemize eklenir.
             sonNo += 1
             kayitlar.append(Kayit(no: sonNo, ad: k.ad, url: k.url, favori: !k.favori))
+            favoriSirasiniGuncelle(sonNo, favori: !k.favori)
             kaydet()
             return
         }
         kayitlar[i].favori.toggle()
+        favoriSirasiniGuncelle(kayitlar[i].no, favori: kayitlar[i].favori)
         kaydet()
+    }
+
+    /// Favoriler, kullanıcının belirlediği sırayla. Sırası olmayanlar sona gelir.
+    var favoriler: [Kayit] {
+        let yer = Dictionary(favoriSirasi.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { a, _ in a })
+        return kayitlar.filter { $0.favori }.enumerated()
+            .sorted { (yer[$0.element.no] ?? Int.max, $0.offset) < (yer[$1.element.no] ?? Int.max, $1.offset) }
+            .map { $0.element }
+    }
+
+    /// Yeni favori sona eklenir, çıkarılan sıradan silinir.
+    private func favoriSirasiniGuncelle(_ no: Int, favori: Bool) {
+        favoriSirasi = favoriler.map { $0.no }.filter { $0 != no } + (favori ? [no] : [])
+        ayar.set(favoriSirasi, forKey: "favori_sirasi")
+    }
+
+    /// Favoriyi taşır, yeni sırasını (1'den başlar) döner. Taşınamıyorsa nil.
+    func favoriTasi(_ k: Kayit, _ yon: FavoriYon) -> Int? {
+        var sira = favoriler.map { $0.no }
+        guard let i = sira.firstIndex(of: k.no) else { return nil }
+        let hedef: Int
+        switch yon {
+        case .yukari: hedef = max(i - 1, 0)
+        case .asagi: hedef = min(i + 1, sira.count - 1)
+        case .enBasa: hedef = 0
+        case .enSona: hedef = sira.count - 1
+        }
+        guard hedef != i else { return nil }
+        sira.insert(sira.remove(at: i), at: hedef)
+        favoriSirasi = sira
+        ayar.set(sira, forKey: "favori_sirasi")
+        degisim += 1
+        return hedef + 1
     }
 
     func sil(_ k: Kayit) {

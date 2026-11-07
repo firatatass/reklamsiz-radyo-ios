@@ -63,7 +63,7 @@ struct AnaEkran: View {
         _ = depo.degisim
         let temel: [Kayit]
         switch sekme {
-        case "fav": temel = depo.kayitlar.filter(\.favori)
+        case "fav": temel = depo.favoriler
         case "rec": temel = kayitDosyalari
         default: temel = depo.filtrele(depo.birlesikListe, kategori: kategori)
         }
@@ -378,6 +378,38 @@ struct AnaEkran: View {
         }
     }
 
+    @ViewBuilder private func satirEylemleri(_ k: Kayit) -> some View {
+        if sekme == "rec" {
+            Button("Paylaş") { paylasilacak = PaylasilacakDosya(url: URL(fileURLWithPath: k.url)) }
+            Button("Sil") { silinecek = k }
+        } else {
+            Button(k.favori ? "Favorilerden Çıkar" : "Favorilere Ekle") { favori(k) }
+            Button("Düzenle") { duzenlenen = k }
+            Button("Sil") { silinecek = k }
+            if sekme == "fav" {
+                let sira = depo.favoriler.map { $0.no }
+                if sira.first != k.no {
+                    Button("Yukarı Taşı") { favoriyiTasi(k, .yukari) }
+                    Button("En Başa Taşı") { favoriyiTasi(k, .enBasa) }
+                }
+                if sira.last != k.no {
+                    Button("Aşağı Taşı") { favoriyiTasi(k, .asagi) }
+                    Button("En Sona Taşı") { favoriyiTasi(k, .enSona) }
+                }
+            }
+        }
+    }
+
+    private func favoriyiTasi(_ k: Kayit, _ yon: FavoriYon) {
+        guard let yeni = depo.favoriTasi(k, yon) else { return }
+        kaydirHedefi = k.no
+        // Odak aynı radyoda kalır, kullanıcı üst üste taşıyabilir.
+        odak = k.no
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            bildirim.goster("\(k.ad), \(yeni). sıraya taşındı")
+        }
+    }
+
     private func satir(_ k: Kayit) -> some View {
         let calanMi = oynatici.calan?.url == k.url
         return HStack(spacing: 8) {
@@ -389,16 +421,9 @@ struct AnaEkran: View {
             }
             .buttonStyle(.plain)
             .accessibilityFocused($odak, equals: k.no)
-            .accessibilityActions {
-                if sekme == "rec" {
-                    Button("Paylaş") { paylasilacak = PaylasilacakDosya(url: URL(fileURLWithPath: k.url)) }
-                    Button("Sil") { silinecek = k }
-                } else {
-                    Button(k.favori ? "Favorilerden Çıkar" : "Favorilere Ekle") { favori(k) }
-                    Button("Düzenle") { duzenlenen = k }
-                    Button("Sil") { silinecek = k }
-                }
-            }
+            .accessibilityActions { satirEylemleri(k) }
+            // Görenler için aynı seçenekler basılı tutunca açılır; ekranda bir şey değişmez.
+            .contextMenu { satirEylemleri(k) }
             if sekme != "rec" {
                 Button { favori(k) } label: {
                     Image(systemName: k.favori ? "star.fill" : "star")
