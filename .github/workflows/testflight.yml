@@ -37,7 +37,8 @@ jobs:
           grep -q "BEGIN PRIVATE KEY" "$ANAHTAR" || { echo "Anahtar biçimi hatalı"; exit 1; }
           echo "ASC_KEY_PATH=$ANAHTAR" >> "$GITHUB_ENV"
 
-      # Normal derleme test derlemesidir. App Store'a gidecek derlemenin commit mesajı [magaza] ile BAŞLAMALI.
+      # Normal derleme geliştiricinin test derlemesidir: liste açık, ayarlarda test satırı var.
+      # Commit mesajı [magaza] ile BAŞLARSA App Store derlemesi, [dis] ile BAŞLARSA dış test kullanıcıları derlemesi olur.
       - name: Derleme türünü seç
         env:
           MESAJ: ${{ github.event.head_commit.message }}
@@ -45,9 +46,12 @@ jobs:
           if [[ "$MESAJ" == "[magaza]"* ]]; then
             echo "Mağaza derlemesi"
             echo "KOSUL=" >> "$GITHUB_ENV"
-          else
-            echo "Test derlemesi"
+          elif [[ "$MESAJ" == "[dis]"* ]]; then
+            echo "Dış test kullanıcıları derlemesi"
             echo "KOSUL=TEST_LISTESI" >> "$GITHUB_ENV"
+          else
+            echo "Geliştirici test derlemesi"
+            echo "KOSUL=TEST_LISTESI TEST_AYARI" >> "$GITHUB_ENV"
           fi
 
       - name: Xcode projesini oluştur

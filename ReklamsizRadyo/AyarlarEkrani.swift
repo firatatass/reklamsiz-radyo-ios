@@ -57,7 +57,7 @@ struct AyarlarEkrani: View {
                     satir("Varsayılan Radyo Listesini Yükle") { varsayilanUyarisi = true }
                 }
                 satir("Tüm Listeyi Temizle") { temizlemeUyarisi = true }
-                if testDerlemesi {
+                if testAyariVar {
                     satir(testListeKapali ? "Test: Liste Kapalı" : "Test: Liste Açık") {
                         testListeKapali.toggle()
                         Task { await depo.internettenGuncelle() }

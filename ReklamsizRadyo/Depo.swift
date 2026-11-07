@@ -22,6 +22,13 @@ let testDerlemesi = true
 let testDerlemesi = false
 #endif
 
+/// Ayarlardaki liste açma kapama satırı yalnızca geliştiricinin kendi test derlemesinde bulunur.
+#if TEST_AYARI
+let testAyariVar = true
+#else
+let testAyariVar = false
+#endif
+
 let TV_KATEGORI = "TV Kanalları"
 let OTOMATIK_KATEGORI = "Otomatik (İsimden Bul)"
 let KATEGORI_SECENEKLERI = [OTOMATIK_KATEGORI, "Pop", "Arabesk", "Haber", "Slow", "Spor", "Dini", "Oyun Havası", "Yerel", TV_KATEGORI]
