@@ -15,6 +15,7 @@ struct AyarlarEkrani: View {
     @AppStorage("tab_order_index") private var sekmeSiraNo = 0
     @AppStorage("tab_order_v2") private var sekmeSirasiV2 = true
     @AppStorage("yayin_ses_seviyesi") private var sesSeviyesi = 100
+    @AppStorage("test_liste_kapali") private var testListeKapali = false
 
     private enum AltPencere: Identifiable {
         case uyku, sekme, bicim, tema, ses
@@ -53,6 +54,12 @@ struct AyarlarEkrani: View {
                     satir("Varsayılan Radyo Listesini Yükle") { varsayilanUyarisi = true }
                 }
                 satir("Tüm Listeyi Temizle") { temizlemeUyarisi = true }
+                if testDerlemesi {
+                    satir(testListeKapali ? "Test: Liste Kapalı" : "Test: Liste Açık") {
+                        testListeKapali.toggle()
+                        Task { await depo.internettenGuncelle() }
+                    }
+                }
             }
             .navigationTitle("Ayarlar")
             .toolbar {

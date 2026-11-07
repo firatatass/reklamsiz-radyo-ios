@@ -14,6 +14,14 @@ struct Kayit: Codable, Identifiable, Hashable {
 
 enum FavoriYon { case yukari, asagi, enBasa, enSona }
 
+/// Sadece TestFlight'a giden test derlemesinde true. Mağaza derlemesi bu ayar olmadan derlenir,
+/// bu yüzden aşağıdaki test seçenekleri App Store sürümünde hiç çalışmaz.
+#if TEST_LISTESI
+let testDerlemesi = true
+#else
+let testDerlemesi = false
+#endif
+
 let TV_KATEGORI = "TV Kanalları"
 let OTOMATIK_KATEGORI = "Otomatik (İsimden Bul)"
 let KATEGORI_SECENEKLERI = [OTOMATIK_KATEGORI, "Pop", "Arabesk", "Haber", "Slow", "Spor", "Dini", "Oyun Havası", "Yerel", TV_KATEGORI]
@@ -569,7 +577,9 @@ final class Depo: ObservableObject {
         // surum.json okunamadıysa durum bilinmiyor: hiçbir şey değişmez, liste indirilmez.
         guard let surumler = surumler else { return }
         // surum.json'daki "ios_aktif": false listeyi bu uygulamada herkes için kapatır.
-        if (surumler["ios_aktif"] as? Bool) == false {
+        // Test derlemesi buna bakmaz, listenin durumunu ayarlardaki test seçeneğinden alır.
+        let kapatilsin = testDerlemesi ? ayar.bool(forKey: "test_liste_kapali") : (surumler["ios_aktif"] as? Bool) == false
+        if kapatilsin {
             listeyiKapat()
             return
         }

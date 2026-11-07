@@ -37,6 +37,19 @@ jobs:
           grep -q "BEGIN PRIVATE KEY" "$ANAHTAR" || { echo "Anahtar biçimi hatalı"; exit 1; }
           echo "ASC_KEY_PATH=$ANAHTAR" >> "$GITHUB_ENV"
 
+      # Normal derleme test derlemesidir. App Store'a gidecek derlemenin commit mesajında [magaza] yazmalı.
+      - name: Derleme türünü seç
+        env:
+          MESAJ: ${{ github.event.head_commit.message }}
+        run: |
+          if [[ "$MESAJ" == *"[magaza]"* ]]; then
+            echo "Mağaza derlemesi"
+            echo "KOSUL=" >> "$GITHUB_ENV"
+          else
+            echo "Test derlemesi"
+            echo "KOSUL=TEST_LISTESI" >> "$GITHUB_ENV"
+          fi
+
       - name: Xcode projesini oluştur
         run: |
           brew install xcodegen
@@ -56,6 +69,7 @@ jobs:
             DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFIL_ADI" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="$KOSUL" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN" | tail -n 80
           test -d build/ReklamsizRadyo.xcarchive
 
