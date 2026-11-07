@@ -8,17 +8,17 @@ import sys
 from asc import BUNDLE_ID, api
 
 GIZLILIK = "https://docs.google.com/document/d/1s3Zy--ZsukAUdrutJhnYgRQ92vbCI7LlF1AcAa7jCao/edit?usp=drivesdk"
-ACIKLAMA = ("Erişilebilir Reklamsız Radyo, yüzlerce radyo ve TV kanalını tek bir yerden, uygulama içinde "
-            "hiçbir reklam olmadan dinlemenizi sağlar. Görme engelli kullanıcılar düşünülerek geliştirildi ve "
-            "VoiceOver ile tam uyumludur. Sesli asistanla istediğiniz kanalı açabilir, yayınları MP3, M4A veya "
-            "WAV olarak kaydedebilir, favori listenizi oluşturabilir ve uyku zamanlayıcısı kurabilirsiniz.")
-YENILIKLER = ("Yenilik: Sesli asistan birden fazla sonuç bulduğunda seçeneklerin hepsini sonuna kadar okuyor, "
-              "ardından hangisini açacağını soruyor. "
-              "Bu deneme sürümünde radyo ve TV yayınlarını dinlemeyi, sesli asistanı, yayın kaydını, "
-              "favorileri, uyku zamanlayıcısını ve ayarları deneyebilirsiniz. Karşılaştığınız sorunları ve "
-              "önerilerinizi TestFlight üzerinden bize iletebilirsiniz.")
+ACIKLAMA = ("Erişilebilir Reklamsız Radyo, görme engelli kullanıcılar düşünülerek geliştirilmiş, VoiceOver ile "
+            "uyumlu bir ses yayını oynatıcısıdır. Dinlemek istediğiniz yayının linkini ekler ya da kendi M3U veya "
+            "PLS listenizi içe aktarırsınız. Sesli asistanla eklediğiniz yayınları açabilir, yayınları MP3, M4A veya "
+            "WAV olarak kaydedebilir, favori listenizi kendi sıranızla düzenleyebilir ve uyku zamanlayıcısı "
+            "kurabilirsiniz. Uygulama içinde reklam yoktur.")
+YENILIKLER = ("Yenilik: Favorileri sıralama, yayın ses seviyesi ayarı ve basılı tutma menüsü eklendi. "
+              "Bu deneme sürümünde link veya M3U/PLS listesi eklemeyi, sesli asistanı, yayın kaydını, favorileri, "
+              "uyku zamanlayıcısını ve ayarları deneyebilirsiniz. Karşılaştığınız sorunları ve önerilerinizi "
+              "TestFlight üzerinden bize iletebilirsiniz.")
 NOT = ("Uygulama hesap gerektirmez. Mikrofon yalnızca sesli asistan için, kullanıcı asistanı açınca kullanılır. "
-       "Radyo ve TV listeleri GitHub'daki açık listeden gelir.")
+       "Uygulamada hazır yayın listesi yoktur, kullanıcı kendi linkini veya M3U/PLS listesini ekler.")
 GRUP_ADI = "Herkese Açık"
 
 eposta = os.environ["BETA_EPOSTA"].strip()
