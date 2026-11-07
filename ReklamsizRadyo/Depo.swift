@@ -70,6 +70,7 @@ final class Depo: ObservableObject {
     @Published private(set) var listeIndiriliyor = true
     private var guncelleniyor = false
     /// Liste GitHub'dan kapatıldıysa true. Kapalıyken kayıtların hepsi gizlenir, ek radyolar gösterilmez.
+    /// Yeni kurulum da kapalı başlar: GitHub "açık" demeden hiçbir radyo gösterilmez.
     @Published private(set) var listeKapali = false
     /// Kapatılınca gizlenen kayıtlar. Silinmez; liste açılınca sırası ve favorileriyle aynen geri gelir.
     private var gizliKayitlar: [Kayit] = []
@@ -113,8 +114,8 @@ final class Depo: ObservableObject {
     }
 
     init() {
-        listeKapali = ayar.bool(forKey: "liste_kapali")
         yukle()
+        listeKapali = ayar.bool(forKey: "liste_kapali") || !cihazdaListeVar
         if let m = ayar.string(forKey: "deleted_api_urls"), let d = try? JSONSerialization.jsonObject(with: Data(m.utf8)) as? [String] {
             silinenApi = Set(d)
         }
@@ -461,6 +462,13 @@ final class Depo: ObservableObject {
         kaydet()
     }
 
+    /// Liste bu cihaza daha önce gelmiş mi. Gelmediyse yeni kurulumdur.
+    private var cihazdaListeVar: Bool {
+        kayitlar.contains { $0.kaynak != nil } || Tur.allCases.contains {
+            FileManager.default.fileExists(atPath: onbellek($0).path)
+        }
+    }
+
     /// Liste kapatıldı: herkeste bütün kayıtlar gizlenir. Hiçbir şey silinmez, indirilen listeler de durur.
     private func listeyiKapat() {
         guard !listeKapali else { return }
@@ -513,8 +521,10 @@ final class Depo: ObservableObject {
         case .hata:
             break
         }
+        // surum.json okunamadıysa durum bilinmiyor: hiçbir şey değişmez, liste indirilmez.
+        guard let surumler = surumler else { return }
         // surum.json'daki "ios_aktif": false listeyi bu uygulamada herkes için kapatır.
-        if (surumler?["ios_aktif"] as? Bool) == false {
+        if (surumler["ios_aktif"] as? Bool) == false {
             listeyiKapat()
             return
         }
@@ -522,9 +532,7 @@ final class Depo: ObservableObject {
         var degisti = false
         for t in Tur.allCases {
             let onbellekVar = FileManager.default.fileExists(atPath: onbellek(t).path)
-            // Gömülü liste olmadığı için surum.json alınamasa da eksik liste indirilmeye çalışılır.
-            if surumler == nil && onbellekVar { continue }
-            let uzak = (surumler?[t.anahtar] as? Int) ?? 0
+            let uzak = (surumler[t.anahtar] as? Int) ?? 0
             let uygulanan = ayar.integer(forKey: "ver_" + t.anahtar)
             if uzak <= uygulanan && onbellekVar { continue }
             let metin: String
@@ -552,11 +560,11 @@ final class Depo: ObservableObject {
             }
         }
         // İki liste de kaldırılmış ya da boşaltılmışsa liste kapatılmış sayılır.
-        if surumler != nil && bosListeler == Tur.allCases.count {
+        if bosListeler == Tur.allCases.count {
             listeyiKapat()
             return
         }
-        if listeKapali && (surumler != nil || degisti) {
+        if listeKapali {
             listeyiAc()
         } else if degisti {
             esitle()

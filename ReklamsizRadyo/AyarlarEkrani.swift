@@ -14,9 +14,10 @@ struct AyarlarEkrani: View {
     @AppStorage("record_format") private var kayitBicimi = "m4a"
     @AppStorage("tab_order_index") private var sekmeSiraNo = 0
     @AppStorage("tab_order_v2") private var sekmeSirasiV2 = true
+    @AppStorage("yayin_ses_seviyesi") private var sesSeviyesi = 100
 
     private enum AltPencere: Identifiable {
-        case uyku, sekme, bicim, tema
+        case uyku, sekme, bicim, tema, ses
         var id: Int { hashValue }
     }
 
@@ -46,6 +47,7 @@ struct AyarlarEkrani: View {
                 }
                 satir("Sekme Sırasını Değiştir") { altPencere = .sekme }
                 satir("Kayıt Formatı") { altPencere = .bicim }
+                satir("Yayın Ses Seviyesi: %\(sesSeviyesi)") { altPencere = .ses }
                 satir("Tema Seçimi") { altPencere = .tema }
                 if !depo.listeKapali {
                     satir("Varsayılan Radyo Listesini Yükle") { varsayilanUyarisi = true }
@@ -121,6 +123,14 @@ struct AyarlarEkrani: View {
             ], secili: bicimler.firstIndex(of: kayitBicimi) ?? 2) { i in
                 kayitBicimi = bicimler[i]
                 bildirim.goster("Kayıt formatı \(bicimler[i].uppercased()) olarak güncellendi!")
+            }
+        case .ses:
+            let seviyeler = [25, 50, 75, 100]
+            SecimPenceresi(baslik: "Yayın Ses Seviyesi", secenekler: seviyeler.map { "%\($0)" },
+                           secili: seviyeler.firstIndex(of: sesSeviyesi)) { i in
+                sesSeviyesi = seviyeler[i]
+                oynatici.sesiUygula()
+                bildirim.goster("Yayın ses seviyesi %\(seviyeler[i]) olarak ayarlandı.")
             }
         case .tema:
             SecimPenceresi(baslik: "Tema Seçimi", secenekler: ["Açık Tema", "Koyu Tema", "Sistem Varsayılanı"], secili: tema) { i in

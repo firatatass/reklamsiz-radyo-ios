@@ -19,6 +19,7 @@ struct AnaEkran: View {
     @State private var eklemeAcik = false
     @State private var listeUyarisiAcik = false
     @State private var listeSecici = false
+    @State private var listeUyarisiGosterildi = false
     @State private var silinecek: Kayit?
     @State private var tvUyarisiIcin: Kayit?
     @State private var tvUyarisiSonrasi: Kayit?
@@ -120,8 +121,8 @@ struct AnaEkran: View {
                 oynatici.durdur()
             }
         }
-        .onChange(of: listeUyarisiGerekli) { gerekli in
-            if gerekli { listeUyarisiniGoster() }
+        .onChange(of: listeUyarisiZamani) { zamani in
+            if zamani { listeUyarisiniGoster() }
         }
         .onChange(of: gelistiriciBilgisiGosterildi) { _ in
             // Teşekkür yazısı açıkken ikinci uyarı açılamaz; o kapandıktan sonra gösterilir.
@@ -301,8 +302,14 @@ struct AnaEkran: View {
 
     private var listeUyarisiGerekli: Bool { depo.listeKapali && depo.kayitlar.isEmpty }
 
+    /// Uyarı GitHub'dan cevap beklenirken açılmaz: liste açıksa boş yere çıkmasın.
+    private var listeUyarisiZamani: Bool { listeUyarisiGerekli && !depo.listeIndiriliyor }
+
+    /// Uygulama her açılışında en fazla bir kez gösterilir, öne her gelişte tekrar çıkmaz.
     private func listeUyarisiniGoster() {
-        if listeUyarisiGerekli && gelistiriciBilgisiGosterildi { listeUyarisiAcik = true }
+        guard listeUyarisiZamani && gelistiriciBilgisiGosterildi && !listeUyarisiGosterildi else { return }
+        listeUyarisiGosterildi = true
+        listeUyarisiAcik = true
     }
 
     /// Uyarı kapanırken başka pencere açılamadığı için kısa bir süre sonra çalışır.
@@ -385,6 +392,7 @@ struct AnaEkran: View {
                     Button("Paylaş") { paylasilacak = PaylasilacakDosya(url: URL(fileURLWithPath: k.url)) }
                     Button("Sil") { silinecek = k }
                 } else {
+                    Button(k.favori ? "Favorilerden Çıkar" : "Favorilere Ekle") { favori(k) }
                     Button("Düzenle") { duzenlenen = k }
                     Button("Sil") { silinecek = k }
                 }
@@ -397,7 +405,8 @@ struct AnaEkran: View {
                         .frame(minWidth: 48, minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(k.favori ? "Favorilerden Çıkar" : "Favorilere Ekle")
+                // VoiceOver'da favori işlemi satırın yukarı/aşağı kaydırma eylemlerinde; her radyo tek öğe olur.
+                .accessibilityHidden(true)
             }
         }
         .listRowBackground(calanMi ? Color(.systemGray4) : Color.clear)

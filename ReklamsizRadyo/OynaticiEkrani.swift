@@ -15,6 +15,17 @@ struct OynaticiEkrani: View {
     @State private var surukleniyor = false
     @State private var surukKonumu: Double = 0
 
+    /// Sadece VoiceOver'ın yukarı/aşağı kaydırma eylemlerinde görünür, ekranda hiçbir şeyi değiştirmez.
+    @ViewBuilder private func favoriEylemi(_ k: Kayit) -> some View {
+        if !k.dosyaMi {
+            let guncel = depo.kayitlar.first { $0.url == k.url } ?? Kayit(no: k.no, ad: k.ad, url: k.url)
+            Button(guncel.favori ? "Favorilerden Çıkar" : "Favorilere Ekle") {
+                depo.favoriDegistir(guncel)
+                bildirim.goster(guncel.favori ? "Favorilerden Çıkarıldı" : "Favorilere Eklendi")
+            }
+        }
+    }
+
     var body: some View {
         ScrollView {
             if let k = oynatici.calan {
@@ -41,12 +52,14 @@ struct OynaticiEkrani: View {
                         .frame(maxWidth: .infinity)
                         .padding(.top, 10)
                         .accessibilityAddTraits(.isHeader)
+                        .accessibilityActions { favoriEylemi(k) }
 
                     if k.dosyaMi { konumAlani }
 
                     HStack(spacing: 10) {
                         BuyukDugme(baslik: "Önceki", etkin: oynatici.oncekiVar) { oynatici.onceki() }
                         BuyukDugme(baslik: oynatici.caliyor ? "duraklat" : "oynat") { oynatici.oynatDuraklat() }
+                            .accessibilityActions { favoriEylemi(k) }
                         BuyukDugme(baslik: "Sonraki", etkin: oynatici.sonrakiVar) { oynatici.sonraki() }
                     }
 

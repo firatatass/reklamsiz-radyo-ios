@@ -39,6 +39,15 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var yenidenDeneme = 0
     private let ayar = UserDefaults.standard
 
+    /// Ayarlardaki yayın ses seviyesi. Sadece yayını etkiler, VoiceOver'ın sesi değişmez.
+    private var sesCarpani: Float {
+        Float(ayar.object(forKey: "yayin_ses_seviyesi") as? Int ?? 100) / 100
+    }
+
+    func sesiUygula() {
+        player?.volume = sesCarpani * (kisik ? 0.25 : 1)
+    }
+
     override init() {
         super.init()
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
@@ -119,7 +128,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         oge.add(cikis)
         let p = AVPlayer(playerItem: oge)
         p.automaticallyWaitsToMinimizeStalling = true
-        p.volume = kisik ? 0.25 : 1
+        p.volume = sesCarpani * (kisik ? 0.25 : 1)
         gozlemciler = [
             oge.observe(\.status) { [weak self] o, _ in
                 Task { @MainActor in if o.status == .failed { self?.yayinKoptu() } }
@@ -171,7 +180,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     /// Sesli asistan açıkken yayının sesi kısılır (Android DUCK_VOLUME / RESTORE_VOLUME).
     func kis(_ evet: Bool) {
         kisik = evet
-        player?.volume = evet ? 0.25 : 1
+        sesiUygula()
     }
 
     // MARK: Uyku zamanlayıcı (iPhone'da uygulama kendini kapatamadığı için süre dolunca yayın durdurulur)
