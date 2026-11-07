@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 /// Ana ekran (Android MainActivity): üst çubuk, arama, kategoriler, sekmeler, liste ve alttaki küçük oynatıcı.
@@ -11,6 +12,8 @@ struct AnaEkran: View {
     @AppStorage("last_tab") private var sekme = "home"
     @AppStorage("last_category") private var kategori = "Tümü"
     @AppStorage("tab_order_index") private var sekmeSiraNo = 0
+    @AppStorage("sekme_sirasi") private var kayitliSekmeSirasi = ""
+    @AppStorage("oynatici_penceresi_ac") private var oynaticiPenceresiAcilsin = false
     @AppStorage("tv_data_warning_ignored") private var tvUyarisiGizli = false
 
     @State private var arama = ""
@@ -20,6 +23,7 @@ struct AnaEkran: View {
     @State private var listeUyarisiAcik = false
     @State private var listeSecici = false
     @State private var listeUyarisiGosterildi = false
+    @State private var listeDaraltildi = false
     @State private var silinecek: Kayit?
     @State private var tvUyarisiIcin: Kayit?
     @State private var tvUyarisiSonrasi: Kayit?
@@ -40,22 +44,49 @@ struct AnaEkran: View {
     @State private var bekleyenIstek: AsistanIstegi?
     @AccessibilityFocusState private var odak: Int?
 
-    private var sekmeSirasi: [String] {
-        switch sekmeSiraNo {
-        case 1: return ["home", "rec", "fav"]
-        case 2: return ["fav", "home", "rec"]
-        case 3: return ["fav", "rec", "home"]
-        case 4: return ["rec", "home", "fav"]
-        case 5: return ["rec", "fav", "home"]
-        default: return ["home", "fav", "rec"]
+    /// TV Kanalları sekmesi yalnızca liste açıkken görünür.
+    private var sekmeler: [String] {
+        sekmeSirasiniCoz(kayitliSekmeSirasi, eskiNo: sekmeSiraNo).filter { $0 != "tv" || !depo.listeKapali }
+    }
+
+    /// TV sekmesi "TV Kanalları" kategorisinin kısayoludur; sesli asistan da aynı kategoriyi kullanır.
+    private func sekmeSeciliMi(_ s: String) -> Bool {
+        switch s {
+        case "tv": return sekme == "home" && kategori == TV_KATEGORI
+        case "home": return sekme == "home" && kategori != TV_KATEGORI
+        default: return sekme == s
         }
     }
 
-    private func sekmeAdi(_ s: String) -> String {
+    private func listeyiDaraltGenislet() {
+        listeDaraltildi.toggle()
+        bildirim.goster(listeDaraltildi ? "Liste daraltıldı" : "Liste genişletildi")
+    }
+
+    private func sekmeyeBasildi(_ s: String) {
+        if sekmeSeciliMi(s) {
+            // VoiceOver'da liste kapanır: küçük oynatıcıya yüzlerce radyodan geçmeden ulaşılır.
+            // Görenler için iPhone'daki alışılmış davranış: liste başa döner.
+            if UIAccessibility.isVoiceOverRunning || listeDaraltildi {
+                listeyiDaraltGenislet()
+            } else if let ilk = gorunen.first?.no {
+                kaydirHedefi = nil
+                DispatchQueue.main.async { kaydirHedefi = ilk }
+            }
+            return
+        }
+        listeDaraltildi = false
+        arama = ""
         switch s {
-        case "fav": return "Favoriler"
-        case "rec": return "Kayıtlar"
-        default: return "Tüm Radyolar"
+        case "tv":
+            sekme = "home"
+            kategori = TV_KATEGORI
+        case "home":
+            sekme = "home"
+            if kategori == TV_KATEGORI { kategori = "Tümü" }
+        default:
+            sekme = s
+            if s == "rec" { kayitDosyalari = depo.kayitDosyalari() }
         }
     }
 
@@ -81,7 +112,7 @@ struct AnaEkran: View {
                 .padding(.vertical, 6)
             // Android'de de sekmeler kod içinde arama kutusunun hemen altına, kategoriler onların altına taşınıyor.
             sekmeCubugu
-            if sekme == "home" { kategoriCubugu }
+            if sekme == "home" && kategori != TV_KATEGORI && !listeDaraltildi { kategoriCubugu }
             liste
             if oynatici.calan != nil { kucukOynatici }
         }
@@ -115,6 +146,9 @@ struct AnaEkran: View {
             Text("Uygulamada hazır radyo listesi bulunmuyor. Dinlemek istediğiniz radyonun linkini ya da kendi M3U veya PLS listenizi ekleyebilirsiniz.")
         }
         .fileImporter(isPresented: $listeSecici, allowedContentTypes: [.item]) { listeDosyasiSecildi($0) }
+        .onChange(of: arama) { a in
+            if !a.isEmpty { listeDaraltildi = false }
+        }
         .onChange(of: depo.listeKapali) { kapali in
             if kapali && kategori == TV_KATEGORI { kategori = "Tümü" }
             // Liste kapanınca çalan yayın da durur. Kaydedilmiş dosya dinleniyorsa dokunulmaz.
@@ -278,22 +312,26 @@ struct AnaEkran: View {
 
     private var sekmeCubugu: some View {
         HStack(spacing: 4) {
-            ForEach(sekmeSirasi, id: \.self) { s in
-                let secili = s == sekme
-                Button {
-                    sekme = s
-                    arama = ""
-                    if s == "rec" { kayitDosyalari = depo.kayitDosyalari() }
-                } label: {
-                    Text(sekmeAdi(s))
+            ForEach(sekmeler, id: \.self) { s in
+                let secili = sekmeSeciliMi(s)
+                let ad = sekmeEtiketi(s, listeKapali: depo.listeKapali)
+                Button { sekmeyeBasildi(s) } label: {
+                    Text(ad)
                         .font(.system(size: 14, weight: secili ? .bold : .regular))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(secili ? lacivert : Color(.systemGray5))
                         .foregroundColor(secili ? .white : .secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(secili ? "\(sekmeAdi(s)) seçili" : sekmeAdi(s))
+                .accessibilityLabel(secili ? (listeDaraltildi ? "\(ad) seçili, liste daraltılmış" : "\(ad) seçili") : ad)
+                // Görenler için: seçili sekmeye basılı tutunca açılır, ekranda bir şey değişmez.
+                .contextMenu {
+                    if secili {
+                        Button(listeDaraltildi ? "Listeyi Genişlet" : "Listeyi Daralt") { listeyiDaraltGenislet() }
+                    }
+                }
             }
         }
         .padding(.horizontal)
@@ -335,7 +373,9 @@ struct AnaEkran: View {
 
     @ViewBuilder private var liste: some View {
         let ogeler = gorunen
-        if ogeler.isEmpty {
+        if listeDaraltildi {
+            Spacer()
+        } else if ogeler.isEmpty {
             Spacer()
             if sekme != "rec" && sekme != "fav" && listeUyarisiGerekli {
                 Text("Radyo Listesi Boş. Dinlemek İstediğiniz Radyonun Linkini ya da Kendi Listenizi Ekleyin.")
@@ -486,7 +526,12 @@ struct AnaEkran: View {
 
     private func baslat(_ k: Kayit) {
         oynatici.baslat(k, liste: gorunen)
-        oynaticiyiAc()
+        // Kayıt dosyasında ileri-geri sarma yalnızca pencerede olduğu için pencere hep açılır.
+        if oynaticiPenceresiAcilsin || k.dosyaMi {
+            oynaticiyiAc()
+        } else if !asistan.acik {
+            bildirim.goster("\(k.ad) açılıyor")
+        }
     }
 
     /// Oynatıcı penceresini açar. Pencere açık sanılıp ekranda değilse (başka pencere kapanırken açılamadıysa) yeniden dener.
@@ -523,6 +568,7 @@ struct AnaEkran: View {
 
     /// Sesli asistanın istediği işler (Android AssistantCallbacks).
     private func asistanIstegi(_ i: AsistanIstegi) {
+        listeDaraltildi = false
         switch i {
         case .cal(let k):
             // Kanal ekranda görünen listedeyse doğrudan aç; değilse doğru listeye geç (TV ise TV Kanalları, radyo ise Tümü).
@@ -537,6 +583,7 @@ struct AnaEkran: View {
         case .sekme(let s):
             sekme = s
             arama = ""
+            if s == "home" && kategori == TV_KATEGORI { kategori = "Tümü" }
             if s == "rec" { kayitDosyalari = depo.kayitDosyalari() }
         case .kategori(let k):
             kategori = k

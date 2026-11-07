@@ -25,6 +25,32 @@ let testDerlemesi = false
 let TV_KATEGORI = "TV Kanalları"
 let OTOMATIK_KATEGORI = "Otomatik (İsimden Bul)"
 let KATEGORI_SECENEKLERI = [OTOMATIK_KATEGORI, "Pop", "Arabesk", "Haber", "Slow", "Spor", "Dini", "Oyun Havası", "Yerel", TV_KATEGORI]
+/// Kayıtlı sekme sırasını okur. Eski sürümden gelen kullanıcının sırası korunur, TV sekmesi radyoların yanına eklenir.
+func sekmeSirasiniCoz(_ kayitli: String, eskiNo: Int) -> [String] {
+    let sira = kayitli.split(separator: ",").map(String.init)
+    if Set(sira) == ["home", "tv", "fav", "rec"] && sira.count == 4 { return sira }
+    var eski: [String]
+    switch eskiNo {
+    case 1: eski = ["home", "rec", "fav"]
+    case 2: eski = ["fav", "home", "rec"]
+    case 3: eski = ["fav", "rec", "home"]
+    case 4: eski = ["rec", "home", "fav"]
+    case 5: eski = ["rec", "fav", "home"]
+    default: eski = ["home", "fav", "rec"]
+    }
+    eski.insert("tv", at: (eski.firstIndex(of: "home") ?? 0) + 1)
+    return eski
+}
+
+func sekmeEtiketi(_ s: String, listeKapali: Bool) -> String {
+    switch s {
+    case "fav": return "Favoriler"
+    case "rec": return "Kayıtlar"
+    case "tv": return TV_KATEGORI
+    default: return listeKapali ? "Tüm Radyolar" : "Radyolar"
+    }
+}
+
 let KATEGORI_DUGMELERI = ["Tümü", "Pop", "Arabesk", "Haber", "Slow", "Spor", "Dini", "Oyun Havası", "Yerel", TV_KATEGORI]
 
 /// M3U'daki bir girdi (Android RemoteListSync.Entry).
@@ -83,8 +109,9 @@ final class Depo: ObservableObject {
     /// Yeni kurulum da kapalı başlar: GitHub "açık" demeden hiçbir radyo gösterilmez.
     @Published private(set) var listeKapali = false
 
+    /// TV kanallarının kendi sekmesi var, kategori düğmelerinde gösterilmez.
+    var kategoriDugmeleri: [String] { KATEGORI_DUGMELERI.filter { $0 != TV_KATEGORI } }
     /// Liste kapalıyken "TV Kanalları" gösterilmez, liste açılınca kendiliğinden geri gelir.
-    var kategoriDugmeleri: [String] { listeKapali ? KATEGORI_DUGMELERI.filter { $0 != TV_KATEGORI } : KATEGORI_DUGMELERI }
     var kategoriSecenekleri: [String] { listeKapali ? KATEGORI_SECENEKLERI.filter { $0 != TV_KATEGORI } : KATEGORI_SECENEKLERI }
 
     /// Kapatılınca gizlenen kayıtlar. Silinmez; liste açılınca sırası ve favorileriyle aynen geri gelir.

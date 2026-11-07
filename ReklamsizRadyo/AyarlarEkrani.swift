@@ -12,8 +12,7 @@ struct AyarlarEkrani: View {
     @AppStorage("shake_assistant_enabled") private var sallama = true
     @AppStorage("app_theme") private var tema = 2
     @AppStorage("record_format") private var kayitBicimi = "m4a"
-    @AppStorage("tab_order_index") private var sekmeSiraNo = 0
-    @AppStorage("tab_order_v2") private var sekmeSirasiV2 = true
+    @AppStorage("oynatici_penceresi_ac") private var oynaticiPenceresiAcilsin = false
     @AppStorage("yayin_ses_seviyesi") private var sesSeviyesi = 100
     @AppStorage("test_liste_kapali") private var testListeKapali = false
 
@@ -49,6 +48,10 @@ struct AyarlarEkrani: View {
                 satir("Sekme Sırasını Değiştir") { altPencere = .sekme }
                 satir("Kayıt Formatı") { altPencere = .bicim }
                 satir("Yayın Ses Seviyesi: %\(sesSeviyesi)") { altPencere = .ses }
+                satir(oynaticiPenceresiAcilsin ? "Yayın Açılınca Oynatıcıyı Göster: Açık" : "Yayın Açılınca Oynatıcıyı Göster: Kapalı") {
+                    oynaticiPenceresiAcilsin.toggle()
+                    bildirim.goster(oynaticiPenceresiAcilsin ? "Yayın açılınca oynatıcı gösterilecek." : "Yayın açılınca oynatıcı gösterilmeyecek.")
+                }
                 satir("Tema Seçimi") { altPencere = .tema }
                 if !depo.listeKapali {
                     satir("Varsayılan Radyo Listesini Yükle") { varsayilanUyarisi = true }
@@ -111,18 +114,7 @@ struct AyarlarEkrani: View {
                 oynatici.uykuKur(dakikalar[i])
             }
         case .sekme:
-            SecimPenceresi(baslik: "Sekme Sırasını Seçin", secenekler: [
-                "Tüm Radyolar - Favoriler - Kayıtlar",
-                "Tüm Radyolar - Kayıtlar - Favoriler",
-                "Favoriler - Tüm Radyolar - Kayıtlar",
-                "Favoriler - Kayıtlar - Tüm Radyolar",
-                "Kayıtlar - Tüm Radyolar - Favoriler",
-                "Kayıtlar - Favoriler - Tüm Radyolar",
-            ], secili: sekmeSiraNo) { i in
-                sekmeSiraNo = i
-                sekmeSirasiV2 = true
-                bildirim.goster("Sekme sırası güncellendi!")
-            }
+            SekmeSirasiPenceresi().environmentObject(depo).environmentObject(bildirim)
         case .bicim:
             let bicimler = ["mp3", "wav", "m4a"]
             SecimPenceresi(baslik: "Kayıt Formatı Seçin", secenekler: [
@@ -211,4 +203,62 @@ struct YedekBelgesi: FileDocument {
     init(veri: Data) { self.veri = veri }
     init(configuration: ReadConfiguration) throws { veri = configuration.file.regularFileContents ?? Data() }
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: veri) }
+}
+
+/// Sekme sırası: her sekme yukarı veya aşağı taşınır. VoiceOver'da satır tek öğedir, taşıma kaydırma eylemlerindedir.
+struct SekmeSirasiPenceresi: View {
+    @EnvironmentObject private var depo: Depo
+    @EnvironmentObject private var bildirim: Bildirim
+    @Environment(\.dismiss) private var kapat
+    @AppStorage("sekme_sirasi") private var kayitliSira = ""
+    @AppStorage("tab_order_index") private var eskiSiraNo = 0
+
+    private var tumSira: [String] { sekmeSirasiniCoz(kayitliSira, eskiNo: eskiSiraNo) }
+    private var gorunen: [String] { tumSira.filter { $0 != "tv" || !depo.listeKapali } }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(Array(gorunen.enumerated()), id: \.element) { i, s in
+                    let ad = sekmeEtiketi(s, listeKapali: depo.listeKapali)
+                    HStack {
+                        Text(ad).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        Button { tasi(s, -1) } label: {
+                            Image(systemName: "chevron.up").frame(minWidth: 44, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(i == 0)
+                        Button { tasi(s, 1) } label: {
+                            Image(systemName: "chevron.down").frame(minWidth: 44, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(i == gorunen.count - 1)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(ad), \(i + 1). sıra")
+                    .accessibilityActions {
+                        if i > 0 { Button("Yukarı Taşı") { tasi(s, -1) } }
+                        if i < gorunen.count - 1 { Button("Aşağı Taşı") { tasi(s, 1) } }
+                    }
+                }
+            }
+            .navigationTitle("Sekme Sırası")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Kapat") { kapat() }.keyboardShortcut(.cancelAction) }
+            }
+        }
+        .accessibilityAction(.escape) { kapat() }
+    }
+
+    private func tasi(_ s: String, _ yon: Int) {
+        var liste = gorunen
+        guard let i = liste.firstIndex(of: s), liste.indices.contains(i + yon) else { return }
+        liste.swapAt(i, i + yon)
+        // Liste kapalıyken görünmeyen TV sekmesi yerini korur.
+        if depo.listeKapali, let tv = tumSira.firstIndex(of: "tv") { liste.insert("tv", at: min(tv, liste.count)) }
+        kayitliSira = liste.joined(separator: ",")
+        let yeni = gorunen.firstIndex(of: s).map { $0 + 1 } ?? i + yon + 1
+        bildirim.goster("\(sekmeEtiketi(s, listeKapali: depo.listeKapali)), \(yeni). sıraya taşındı")
+    }
 }
