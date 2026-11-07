@@ -20,7 +20,7 @@ struct DuzenleEkrani: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Picker("Kategori", selection: $kat) {
-                        ForEach(KATEGORI_SECENEKLERI, id: \.self) { Text($0).tag($0) }
+                        ForEach(depo.kategoriSecenekleri, id: \.self) { Text($0).tag($0) }
                     }
                 }
                 Section {
@@ -37,7 +37,7 @@ struct DuzenleEkrani: View {
             ad = kayit.ad
             url = kayit.url
             let k = depo.kategori(kayit.url) ?? OTOMATIK_KATEGORI
-            kat = KATEGORI_SECENEKLERI.contains(k) ? k : OTOMATIK_KATEGORI
+            kat = depo.kategoriSecenekleri.contains(k) ? k : OTOMATIK_KATEGORI
         }
     }
 
@@ -73,7 +73,7 @@ struct EkleEkrani: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Picker("Kategori Seçimi:", selection: $kat) {
-                        ForEach(KATEGORI_SECENEKLERI, id: \.self) { Text($0).tag($0) }
+                        ForEach(depo.kategoriSecenekleri, id: \.self) { Text($0).tag($0) }
                     }
                 }
                 Section {

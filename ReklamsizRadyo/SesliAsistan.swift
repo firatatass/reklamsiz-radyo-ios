@@ -1042,8 +1042,24 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     - "Rehber" veya "Yardım"
     """
 
+    /// Liste kapalıyken rehberde kanal adı örnekleri ve TV yazıları gösterilmez.
+    /// Liste açılınca rehberMetni olduğu gibi geri gelir. Komutların çalışması değişmez.
+    var gosterilecekRehber: String {
+        guard depo?.listeKapali == true,
+              let bas = Self.rehberMetni.range(of: "1. Radyo ve TV Kanalı Açma"),
+              let son = Self.rehberMetni.range(of: "2. Çalma Kontrolleri") else { return Self.rehberMetni }
+        let genel = "1. Yayın Açma (hangi sekmede olursanız olun):\n"
+            + "- \"[Yayın Adı] aç\" veya \"[Yayın Adı] dinle\": Listenize eklediğiniz yayını açar.\n"
+            + "- Asistan iki seçenek sorarsa \"birinci\" veya \"ikinci\" diyebilirsiniz.\n\n"
+        return Self.rehberMetni.replacingCharacters(in: bas.lowerBound..<son.lowerBound, with: genel)
+            .replacingOccurrences(of: "- \"TV kanalları\" veya \"TV aç\" (TV Kanalları kategorisi)\n", with: "")
+    }
+
     func rehberiSeslendir() {
-        konus("Sesli asistan komutları: Radyo dinlemek için radyonun adını, televizyon kanalı açmak için kanalın adını söyleyin; örneğin Kral FM aç ya da TRT 1 aç. Aynı adlı radyo ve TV kanalı varsa sonuna TV veya radyo ekleyin; örneğin A Haber TV aç. Şu an ne çalıyor diyebilir, favorilerim veya kayıtlarım diyerek sekmeler arasında geçebilirsiniz. Oynat, durdur, sonraki veya önceki radyo diyebilirsiniz. Yayını durdur diyerek yayını kapatıp ana ekrana dönebilirsiniz. Sesi aç veya kıs diyebilirsiniz. Dini, haber, pop, slow gibi kategorilere geçebilirsiniz. Kayıt alabilir, zamanlayıcı veya kota limiti kurabilirsiniz. Uygulamayı kapat diyerek çıkabilirsiniz.")
+        let giris = depo?.listeKapali == true
+            ? "Sesli asistan komutları: Listenize eklediğiniz yayını açmak için yayının adını söyleyin."
+            : "Sesli asistan komutları: Radyo dinlemek için radyonun adını, televizyon kanalı açmak için kanalın adını söyleyin; örneğin Kral FM aç ya da TRT 1 aç. Aynı adlı radyo ve TV kanalı varsa sonuna TV veya radyo ekleyin; örneğin A Haber TV aç."
+        konus(giris + " Şu an ne çalıyor diyebilir, favorilerim veya kayıtlarım diyerek sekmeler arasında geçebilirsiniz. Oynat, durdur, sonraki veya önceki radyo diyebilirsiniz. Yayını durdur diyerek yayını kapatıp ana ekrana dönebilirsiniz. Sesi aç veya kıs diyebilirsiniz. Dini, haber, pop, slow gibi kategorilere geçebilirsiniz. Kayıt alabilir, zamanlayıcı veya kota limiti kurabilirsiniz. Uygulamayı kapat diyerek çıkabilirsiniz.")
     }
 
     // MARK: Metin ayrıştırma (Android parseCategory, parseTab, parseTime, parseDurationMinutes)

@@ -88,7 +88,7 @@ struct RehberPenceresi: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                Text(SesliAsistan.rehberMetni)
+                Text(asistan.gosterilecekRehber)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }

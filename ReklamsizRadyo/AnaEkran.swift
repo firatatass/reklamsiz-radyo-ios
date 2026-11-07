@@ -98,6 +98,7 @@ struct AnaEkran: View {
         }
         .onAppear {
             if sekme == "rec" { kayitDosyalari = depo.kayitDosyalari() }
+            if depo.listeKapali && kategori == TV_KATEGORI { kategori = "Tümü" }
             listeUyarisiniGoster()
             if !gelistiriciBilgisiGosterildi {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { gelistiriciBilgisiAcik = true }
@@ -115,6 +116,7 @@ struct AnaEkran: View {
         }
         .fileImporter(isPresented: $listeSecici, allowedContentTypes: [.item]) { listeDosyasiSecildi($0) }
         .onChange(of: depo.listeKapali) { kapali in
+            if kapali && kategori == TV_KATEGORI { kategori = "Tümü" }
             // Liste kapanınca çalan yayın da durur. Kaydedilmiş dosya dinleniyorsa dokunulmaz.
             if kapali, let k = oynatici.calan, !k.dosyaMi {
                 oynaticiAcik = false
@@ -245,7 +247,7 @@ struct AnaEkran: View {
         ScrollViewReader { kaydirici in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(KATEGORI_DUGMELERI, id: \.self) { k in
+                    ForEach(depo.kategoriDugmeleri, id: \.self) { k in
                         let secili = k == kategori
                         Button {
                             kategori = k

@@ -72,6 +72,11 @@ final class Depo: ObservableObject {
     /// Liste GitHub'dan kapatıldıysa true. Kapalıyken kayıtların hepsi gizlenir, ek radyolar gösterilmez.
     /// Yeni kurulum da kapalı başlar: GitHub "açık" demeden hiçbir radyo gösterilmez.
     @Published private(set) var listeKapali = false
+
+    /// Liste kapalıyken "TV Kanalları" gösterilmez, liste açılınca kendiliğinden geri gelir.
+    var kategoriDugmeleri: [String] { listeKapali ? KATEGORI_DUGMELERI.filter { $0 != TV_KATEGORI } : KATEGORI_DUGMELERI }
+    var kategoriSecenekleri: [String] { listeKapali ? KATEGORI_SECENEKLERI.filter { $0 != TV_KATEGORI } : KATEGORI_SECENEKLERI }
+
     /// Kapatılınca gizlenen kayıtlar. Silinmez; liste açılınca sırası ve favorileriyle aynen geri gelir.
     private var gizliKayitlar: [Kayit] = []
 
