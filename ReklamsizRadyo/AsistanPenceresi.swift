@@ -61,7 +61,10 @@ struct AsistanPenceresi: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
 
-                ornek("A Haber Aç", "Örnek Komut: A Haber Aç", "A Haber aç")
+                // Kanal adı örneği yalnızca liste açıkken gösterilir.
+                if asistan.depo?.listeKapali == false {
+                    ornek("A Haber Aç", "Örnek Komut: A Haber Aç", "A Haber aç")
+                }
                 ornek("30 Dk Zamanlayıcı", "Örnek Komut: 30 Dakika Zamanlayıcı Kur", "30 dakika zamanlayıcı")
                 ornek("Durdur", "Örnek Komut: Radyoyu Durdur", "Yayını durdur")
                 ornek("Uygulamayı Kapat", "Örnek Komut: Uygulamayı Kapat", "Uygulamayı kapat")
