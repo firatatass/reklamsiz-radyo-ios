@@ -88,9 +88,18 @@ final class CanliTampon: @unchecked Sendable {
     /// Yayının nasıl çalınacağına karar verir; kısa pencereli yayın için aracıyı hazırlar.
     func hazirla(_ kaynak: URL, kimlik: String) async -> Hazirlik {
         durdur()
-        if let alt = Self.uzunListe(kaynak) { return .dogrudan(alt) }
-        guard let bulunan = await medyaListesiBul(kaynak, kimlik: kimlik) else { return .yok }
-        if bulunan.0.satirlar.reduce(0, { $0 + $1.sure }) >= kisaPencereSiniri {
+        if let alt = Self.uzunListe(kaynak) {
+            OlcumKaydi.shared.yaz("ölçüm atlandı: kayıtlı uzun liste")
+            return .dogrudan(alt)
+        }
+        let t0 = Date()
+        guard let bulunan = await medyaListesiBul(kaynak, kimlik: kimlik) else {
+            OlcumKaydi.shared.yaz("ölçüm: liste alınamadı ya da uygun değil (\(gecenSure(t0)))")
+            return .yok
+        }
+        let pencere = bulunan.0.satirlar.reduce(0, { $0 + $1.sure })
+        OlcumKaydi.shared.yaz("ölçüm: \(bulunan.0.satirlar.count) parça, \(Int(pencere)) sn pencere, hedef \(bulunan.0.hedef) (\(gecenSure(t0)))")
+        if pencere >= kisaPencereSiniri {
             Self.uzunListeKaydet(kaynak, bulunan.1)
             return .dogrudan(bulunan.1)
         }
@@ -106,7 +115,9 @@ final class CanliTampon: @unchecked Sendable {
             hedefSure = max(bulunan.0.hedef, 1)
         }
         await isle(bulunan.0, adres: bulunan.1, kimlik: kimlik, oturumNo: yeniOturum)
-        if kuyruk.sync(execute: { parcalar.isEmpty }) { return .yok }
+        let ilk = kuyruk.sync { parcalar.count }
+        OlcumKaydi.shared.yaz("aracı: ilk \(ilk) parça indi (\(gecenSure(t0)))")
+        if ilk == 0 { return .yok }
         let adres = bulunan.1
         gorev = Task.detached { [weak self] in
             await self?.dongu(adres, kimlik: kimlik, oturumNo: yeniOturum)
@@ -131,7 +142,10 @@ final class CanliTampon: @unchecked Sendable {
             let bekle = kuyruk.sync { min(max(Double(hedefSure) / 2, 1), 4) }
             try? await Task.sleep(nanoseconds: UInt64(bekle * 1_000_000_000))
             guard !Task.isCancelled, kuyruk.sync(execute: { oturum == oturumNo }) else { return }
-            guard let r = await metinIndir(adres, kimlik: kimlik) else { continue }
+            guard let r = await metinIndir(adres, kimlik: kimlik) else {
+                OlcumKaydi.shared.yaz("aracı: liste yenilenemedi")
+                continue
+            }
             let l = cozumle(r.0)
             if l.satirlar.isEmpty || l.uygunDegil { continue }
             await isle(l, adres: r.1, kimlik: kimlik, oturumNo: oturumNo)
@@ -153,6 +167,7 @@ final class CanliTampon: @unchecked Sendable {
                 } else if l.sira > s + 1 {
                     // Aradaki parçalar kaçırıldı (bağlantı bir süre kesildi).
                     bekleyenKesinti = true
+                    OlcumKaydi.shared.yaz("aracı: \(l.sira - s - 1) parça kaçırıldı")
                 }
             }
             // İlk açılışta listedeki bütün parçalar alınır (kısa liste, aynı anda iner):
@@ -190,6 +205,7 @@ final class CanliTampon: @unchecked Sendable {
                     bekleyenKesinti = false
                 } else {
                     bekleyenKesinti = true
+                    OlcumKaydi.shared.yaz("aracı: parça indirilemedi")
                 }
                 sonKaynakNo = no
                 buda()

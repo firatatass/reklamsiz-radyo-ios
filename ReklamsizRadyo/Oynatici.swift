@@ -48,6 +48,10 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var dogrudanCal = false
     /// Uzun pencereli yayın, kaydedilen alt listesinden mi çalıyor.
     private var altListeden = false
+    /// Ölçüm kaydı (yalnızca test derlemesi): kullanıcının yayını açtığı an ve ilk ses.
+    private var acilisBasi = Date()
+    private var sesBasladi = false
+    private var olcumGozlemcileri: [NSObjectProtocol] = []
     /// Yayın açılamadığında Apple'ın verdiği hata (yalnızca geliştiricinin test derlemesinde gösterilir).
     private var sonHata = ""
     private var zamanlayici: Timer?
@@ -124,6 +128,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         yenidenDeneme = 0
         sonHata = ""
         dogrudanCal = false
+        acilisBasi = Date()
+        OlcumKaydi.shared.yaz("=== AÇ: \(k.ad) | \(k.url)")
         veri = ayar.integer(forKey: "data_usage_" + k.url)
         oynaticiKur(k)
     }
@@ -133,6 +139,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         baglantiNo += 1
         let no = baglantiNo
         altListeden = false
+        let kurBasi = Date()
+        olc("bağlantı #\(no) (deneme \(yenidenDeneme)\(dogrudanCal ? ", aracısız zorunlu" : ""))")
         if k.dosyaMi {
             CanliTampon.shared.durdur()
             tamponlu = false
@@ -152,6 +160,11 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         // HLS yayınları uygulama içi aracıdan çalınır; uygun değilse yayın doğrudan açılır.
         Task {
             let sonuc = await CanliTampon.shared.hazirla(u, kimlik: Self.kimlik(u))
+            switch sonuc {
+            case .araci: self.olc("karar: aracı (\(gecenSure(kurBasi)))")
+            case .dogrudan(let a): self.olc("karar: doğrudan \(kisaAdres(a)) (\(gecenSure(kurBasi)))")
+            case .yok: self.olc("karar: ölçülemedi, kendi adresi (\(gecenSure(kurBasi)))")
+            }
             guard self.baglantiNo == no, self.caliyor, self.calan?.url == k.url else { return }
             switch sonuc {
             case .araci(let yerel):
@@ -169,6 +182,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     private func oynaticiyiBaslat(_ k: Kayit, adres url: URL) {
+        sesBasladi = false
+        olc("oynatıcı başlıyor: \(kisaAdres(url))")
         let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: Self.kimlik(url)])
         let oge = AVPlayerItem(asset: asset)
         if !k.dosyaMi {
@@ -190,12 +205,17 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         gozlemciler = [
             oge.observe(\.status) { [weak self] o, _ in
                 Task { @MainActor in
+                    self?.olc(o.status == .readyToPlay ? "öğe hazır"
+                              : o.status == .failed ? "öğe HATA: \(o.error?.localizedDescription ?? "-")" : "öğe bilinmiyor")
                     if o.status == .failed { self?.yayinKoptu() }
                     // Görüntü ekranda gösterilmediği için çözülmez, yalnızca ses çalınır.
                     if o.status == .readyToPlay {
                         for t in o.tracks where t.assetTrack?.mediaType == .video { t.isEnabled = false }
                     }
                 }
+            },
+            p.observe(\.timeControlStatus) { [weak self] p, _ in
+                Task { @MainActor in self?.durumDegisti(p) }
             },
         ]
         bildirimGozlemcisi = NotificationCenter.default.addObserver(
@@ -206,6 +226,18 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         hataGozlemcisi = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime, object: oge, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.yayinKoptu() }
+        }
+        if testAyariVar {
+            olcumGozlemcileri = [
+                NotificationCenter.default.addObserver(
+                    forName: AVPlayerItem.newAccessLogEntryNotification, object: oge, queue: .main) { [weak self] _ in
+                    Task { @MainActor in self?.erisimKaydi(oge) }
+                },
+                NotificationCenter.default.addObserver(
+                    forName: AVPlayerItem.newErrorLogEntryNotification, object: oge, queue: .main) { [weak self] _ in
+                    Task { @MainActor in self?.hataKaydi(oge) }
+                },
+            ]
         }
         player = p
         sonBayt = 0
@@ -307,6 +339,48 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         bildirimGozlemcisi = nil
         if let g = hataGozlemcisi { NotificationCenter.default.removeObserver(g) }
         hataGozlemcisi = nil
+        olcumGozlemcileri.forEach { NotificationCenter.default.removeObserver($0) }
+        olcumGozlemcileri = []
+    }
+
+    // MARK: Ölçüm kaydı (yalnızca test derlemesi)
+
+    private func olc(_ olay: String) {
+        guard testAyariVar else { return }
+        OlcumKaydi.shared.yaz("\(olay) [\(gecenSure(acilisBasi))]")
+    }
+
+    private func durumDegisti(_ p: AVPlayer) {
+        guard testAyariVar, p === player else { return }
+        switch p.timeControlStatus {
+        case .playing:
+            let tampon = p.currentItem?.loadedTimeRanges.first.map { $0.timeRangeValue.duration.seconds } ?? 0
+            olc("ÇALIYOR (ara bellek \(String(format: "%.1f", tampon)) sn)")
+            if !sesBasladi {
+                sesBasladi = true
+                Bildirim.shared.goster("Açılış \(gecenSure(acilisBasi))")
+            }
+        case .waitingToPlayAtSpecifiedRate:
+            olc("bekliyor: \(p.reasonForWaitingToPlay?.rawValue ?? "-")")
+        case .paused:
+            olc("duraklatıldı")
+        @unknown default:
+            break
+        }
+    }
+
+    private func erisimKaydi(_ o: AVPlayerItem) {
+        guard let e = o.accessLog()?.events.last else { return }
+        let adres = kisaAdres(e.uri.flatMap { URL(string: $0) })
+        olc("erişim: başlangıç \(String(format: "%.2f", e.startupTime)) sn, istek \(e.numberOfMediaRequests), "
+            + "\(e.numberOfBytesTransferred / 1024) KB, aktarım \(String(format: "%.2f", e.transferDuration)) sn, "
+            + "bit hızı \(Int(e.indicatedBitrate)), \(adres)")
+    }
+
+    private func hataKaydi(_ o: AVPlayerItem) {
+        guard let e = o.errorLog()?.events.last else { return }
+        let adres = kisaAdres(e.uri.flatMap { URL(string: $0) })
+        olc("hata kaydı: kod \(e.errorStatusCode) \(e.errorDomain) \(e.errorComment ?? "") \(adres)")
     }
 
     /// Telefon araması, Siri, sesli asistan, başka bir uygulamanın sesi veya kulaklık çıkarılması gibi
@@ -365,6 +439,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     private func hata() {
+        olc("VAZGEÇİLDİ: bağlantı hatası")
         caliyor = false
         Bildirim.shared.goster(testAyariVar && !sonHata.isEmpty
                                ? "Bağlantı hatası: Yayın açılamıyor. Ayrıntı: \(sonHata)"
@@ -384,6 +459,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             if tamponlu { parcalar.append("aracı") }
             if !parcalar.isEmpty { sonHata = parcalar.joined(separator: ", ") }
         }
+        olc("yayın koptu ya da açılamadı: \(sonHata) (deneme \(yenidenDeneme))")
         // Aracıdan çalan yayın koptuysa bir sonraki deneme doğrudan yayına bağlanır.
         if tamponlu || altListeden { dogrudanCal = true }
         if altListeden, let u = URL(string: Self.calinabilirAdres(k.url)) { CanliTampon.uzunListeyiUnut(u) }
@@ -440,8 +516,12 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         } else if caliyor {
             // Yayın takıldı: önce canlıya atla, 15 saniyede hâlâ ses yoksa baştan bağlan.
             beklemeSayaci += 1
-            if beklemeSayaci == 4 { canliyaAtla() }
+            if beklemeSayaci == 4 {
+                olc("4 sn ses yok: canlıya atlanıyor")
+                canliyaAtla()
+            }
             if beklemeSayaci >= 15 {
+                olc("15 sn ses yok: yeniden bağlanılıyor")
                 beklemeSayaci = 0
                 yayinKoptu()
                 return

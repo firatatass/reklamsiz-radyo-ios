@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 /// "Ayarlar" (Android showSettings): seçenekler aynı sırada ve aynı adlarla.
@@ -30,6 +31,7 @@ struct AyarlarEkrani: View {
     @State private var yedekAcik = false
     @State private var varsayilanUyarisi = false
     @State private var temizlemeUyarisi = false
+    @State private var olcumPaylas: PaylasilacakDosya?
 
     var body: some View {
         NavigationStack {
@@ -62,6 +64,17 @@ struct AyarlarEkrani: View {
                         testListeKapali.toggle()
                         Task { await depo.internettenGuncelle() }
                     }
+                    satir("Test: Ölçüm Kaydını Kopyala") {
+                        UIPasteboard.general.string = OlcumKaydi.shared.metin
+                        bildirim.goster("Ölçüm kaydı kopyalandı, \(OlcumKaydi.shared.satirSayisi) satır")
+                    }
+                    satir("Test: Ölçüm Kaydını Paylaş") {
+                        olcumPaylas = PaylasilacakDosya(url: OlcumKaydi.shared.dosya)
+                    }
+                    satir("Test: Ölçüm Kaydını Sil") {
+                        OlcumKaydi.shared.sil()
+                        bildirim.goster("Ölçüm kaydı silindi")
+                    }
                 }
             }
             .navigationTitle("Ayarlar")
@@ -72,6 +85,7 @@ struct AyarlarEkrani: View {
         .accessibilityAction(.escape) { kapat() }
         .sheet(isPresented: $rehberAcik) { RehberPenceresi(asistan: asistan) }
         .sheet(item: $altPencere) { p in altPencereGorunumu(p) }
+        .sheet(item: $olcumPaylas) { d in PaylasPenceresi(ogeler: [d.url]) }
         .fileImporter(isPresented: $dosyaSecici, allowedContentTypes: [.item]) { sonuc in dosyaSecildi(sonuc) }
         .fileExporter(isPresented: $yedekAcik, document: YedekBelgesi(veri: depo.yedekVerisi()),
                       contentType: .json, defaultFilename: "ReklamsizRadyo_Yedek") { sonuc in
