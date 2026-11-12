@@ -55,11 +55,46 @@ final class CanliTampon: @unchecked Sendable {
         u.path.lowercased().hasSuffix(".m3u8") && u.host != "127.0.0.1"
     }
 
-    /// Yayını aracıdan çalmak için telefondaki adresi döner. Uygun değilse nil: yayın doğrudan çalınır.
-    func hazirla(_ kaynak: URL, kimlik: String) async -> URL? {
+    enum Hazirlik {
+        /// Kısa pencereli yayın: telefondaki aracı adresinden çalınır.
+        case araci(URL)
+        /// Uzun pencereli yayın: aracısız, doğrudan sesi olan en düşük kaliteli listeden çalınır.
+        case dogrudan(URL)
+        /// Liste okunamadı ya da uygun değil: yayının kendi adresi çalınır.
+        case yok
+    }
+
+    private static let uzunListeAnahtari = "uzun_liste_adresleri"
+
+    /// Daha önce uzun pencereli olduğu görülen yayın: ölçmeden hemen açılır.
+    private static func uzunListe(_ kaynak: URL) -> URL? {
+        let d = UserDefaults.standard.dictionary(forKey: uzunListeAnahtari) as? [String: String]
+        return d?[kaynak.absoluteString].flatMap(URL.init(string:))
+    }
+
+    private static func uzunListeKaydet(_ kaynak: URL, _ alt: URL) {
+        var d = UserDefaults.standard.dictionary(forKey: uzunListeAnahtari) as? [String: String] ?? [:]
+        d[kaynak.absoluteString] = alt.absoluteString
+        UserDefaults.standard.set(d, forKey: uzunListeAnahtari)
+    }
+
+    /// Kayıtlı alt listeden açılamayan yayın unutulur; bir dahaki sefere yeniden ölçülür.
+    static func uzunListeyiUnut(_ kaynak: URL) {
+        var d = UserDefaults.standard.dictionary(forKey: uzunListeAnahtari) as? [String: String] ?? [:]
+        d[kaynak.absoluteString] = nil
+        UserDefaults.standard.set(d, forKey: uzunListeAnahtari)
+    }
+
+    /// Yayının nasıl çalınacağına karar verir; kısa pencereli yayın için aracıyı hazırlar.
+    func hazirla(_ kaynak: URL, kimlik: String) async -> Hazirlik {
         durdur()
-        guard let port = await dinleyiciyiBaslat() else { return nil }
-        guard let bulunan = await medyaListesiBul(kaynak, kimlik: kimlik) else { return nil }
+        if let alt = Self.uzunListe(kaynak) { return .dogrudan(alt) }
+        guard let bulunan = await medyaListesiBul(kaynak, kimlik: kimlik) else { return .yok }
+        if bulunan.0.satirlar.reduce(0, { $0 + $1.sure }) >= kisaPencereSiniri {
+            Self.uzunListeKaydet(kaynak, bulunan.1)
+            return .dogrudan(bulunan.1)
+        }
+        guard let port = await dinleyiciyiBaslat() else { return .yok }
         let yeniOturum = String(UUID().uuidString.prefix(8))
         kuyruk.sync {
             oturum = yeniOturum
@@ -71,12 +106,13 @@ final class CanliTampon: @unchecked Sendable {
             hedefSure = max(bulunan.0.hedef, 1)
         }
         await isle(bulunan.0, adres: bulunan.1, kimlik: kimlik, oturumNo: yeniOturum)
-        if kuyruk.sync(execute: { parcalar.isEmpty }) { return nil }
+        if kuyruk.sync(execute: { parcalar.isEmpty }) { return .yok }
         let adres = bulunan.1
         gorev = Task.detached { [weak self] in
             await self?.dongu(adres, kimlik: kimlik, oturumNo: yeniOturum)
         }
-        return URL(string: "http://127.0.0.1:\(port)/\(yeniOturum)/canli.m3u8")
+        guard let yerel = URL(string: "http://127.0.0.1:\(port)/\(yeniOturum)/canli.m3u8") else { return .yok }
+        return .araci(yerel)
     }
 
     func durdur() {
@@ -174,12 +210,13 @@ final class CanliTampon: @unchecked Sendable {
     // MARK: Liste okuma
 
     private func medyaListesiBul(_ u: URL, kimlik: String) async -> (MedyaListesi, URL)? {
-        guard let r = await metinIndir(u, kimlik: kimlik),
+        // Ölçüm kısa sürer: sunucu geç cevap verirse beklenmez, yayın doğrudan açılır.
+        guard let r = await metinIndir(u, kimlik: kimlik, sure: 5),
               r.0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#EXTM3U") else { return nil }
         if r.0.contains("#EXT-X-STREAM-INF") {
             // Ayrı ses kanalı olan yayınlarda alt listelerde ses yok: aracı kullanılmaz.
             if r.0.range(of: #"#EXT-X-MEDIA:[^\n]*TYPE=AUDIO[^\n]*URI="#, options: .regularExpression) != nil { return nil }
-            guard let alt = enDusukAltListe(r.0, taban: r.1), let r2 = await metinIndir(alt, kimlik: kimlik) else { return nil }
+            guard let alt = enDusukAltListe(r.0, taban: r.1), let r2 = await metinIndir(alt, kimlik: kimlik, sure: 5) else { return nil }
             let l = cozumle(r2.0)
             return uygun(l) ? (l, r2.1) : nil
         }
@@ -187,10 +224,8 @@ final class CanliTampon: @unchecked Sendable {
         return uygun(l) ? (l, r.1) : nil
     }
 
-    /// Aracı yalnızca kısa pencereli (donma yapan) yayınlarda kullanılır.
     private func uygun(_ l: MedyaListesi) -> Bool {
-        if l.uygunDegil || l.satirlar.isEmpty { return false }
-        return l.satirlar.reduce(0) { $0 + $1.sure } < kisaPencereSiniri
+        !l.uygunDegil && !l.satirlar.isEmpty
     }
 
     /// Uygulama yalnızca ses çaldığı için sesi olan en düşük kaliteli alt liste seçilir.
@@ -250,16 +285,16 @@ final class CanliTampon: @unchecked Sendable {
 
     // MARK: İndirme
 
-    private func istek(_ u: URL, kimlik: String) -> URLRequest {
+    private func istek(_ u: URL, kimlik: String, sure: TimeInterval = 15) -> URLRequest {
         var r = URLRequest(url: u)
         r.setValue(kimlik, forHTTPHeaderField: "User-Agent")
         r.cachePolicy = .reloadIgnoringLocalCacheData
-        r.timeoutInterval = 15
+        r.timeoutInterval = sure
         return r
     }
 
-    private func metinIndir(_ u: URL, kimlik: String) async -> (String, URL)? {
-        guard let (veri, cevap) = try? await URLSession.shared.data(for: istek(u, kimlik: kimlik)),
+    private func metinIndir(_ u: URL, kimlik: String, sure: TimeInterval = 15) async -> (String, URL)? {
+        guard let (veri, cevap) = try? await URLSession.shared.data(for: istek(u, kimlik: kimlik, sure: sure)),
               (cevap as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return (String(decoding: veri, as: UTF8.self), cevap.url ?? u)
     }

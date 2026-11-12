@@ -46,6 +46,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var tamponlu = false
     /// Aracıdan açılamayan yayın bir sonraki denemede doğrudan açılır.
     private var dogrudanCal = false
+    /// Uzun pencereli yayın, kaydedilen alt listesinden mi çalıyor.
+    private var altListeden = false
     /// Yayın açılamadığında Apple'ın verdiği hata (yalnızca geliştiricinin test derlemesinde gösterilir).
     private var sonHata = ""
     private var zamanlayici: Timer?
@@ -130,6 +132,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         try? AVAudioSession.sharedInstance().setActive(true)
         baglantiNo += 1
         let no = baglantiNo
+        altListeden = false
         if k.dosyaMi {
             CanliTampon.shared.durdur()
             tamponlu = false
@@ -148,10 +151,20 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         }
         // HLS yayınları uygulama içi aracıdan çalınır; uygun değilse yayın doğrudan açılır.
         Task {
-            let yerel = await CanliTampon.shared.hazirla(u, kimlik: Self.kimlik(u))
+            let sonuc = await CanliTampon.shared.hazirla(u, kimlik: Self.kimlik(u))
             guard self.baglantiNo == no, self.caliyor, self.calan?.url == k.url else { return }
-            self.tamponlu = yerel != nil
-            self.oynaticiyiBaslat(k, adres: yerel ?? u)
+            switch sonuc {
+            case .araci(let yerel):
+                self.tamponlu = true
+                self.oynaticiyiBaslat(k, adres: yerel)
+            case .dogrudan(let alt):
+                self.tamponlu = false
+                self.altListeden = alt != u
+                self.oynaticiyiBaslat(k, adres: alt)
+            case .yok:
+                self.tamponlu = false
+                self.oynaticiyiBaslat(k, adres: u)
+            }
         }
     }
 
@@ -170,7 +183,9 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         cikis.setDelegate(self, queue: .main)
         oge.add(cikis)
         let p = AVPlayer(playerItem: oge)
-        p.automaticallyWaitsToMinimizeStalling = true
+        // Canlı yayın ilk parça gelir gelmez başlasın (açılış hızlansın); çalmaya başlayınca
+        // Apple'ın takılmayı önleyen beklemesi yeniden açılır (tik). Aracıdan çalanlarda değişmez.
+        p.automaticallyWaitsToMinimizeStalling = k.dosyaMi || tamponlu
         p.volume = sesCarpani * (kisik ? 0.25 : 1)
         gozlemciler = [
             oge.observe(\.status) { [weak self] o, _ in
@@ -370,7 +385,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             if !parcalar.isEmpty { sonHata = parcalar.joined(separator: ", ") }
         }
         // Aracıdan çalan yayın koptuysa bir sonraki deneme doğrudan yayına bağlanır.
-        if tamponlu { dogrudanCal = true }
+        if tamponlu || altListeden { dogrudanCal = true }
+        if altListeden, let u = URL(string: Self.calinabilirAdres(k.url)) { CanliTampon.uzunListeyiUnut(u) }
         if !k.dosyaMi && yenidenDeneme < 5 {
             yenidenDeneme += 1
             let bekle = UInt64(1 << (yenidenDeneme - 1)) * 1_000_000_000
@@ -417,6 +433,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         }
         if !payAyarlandi { canliPayiAyarla() }
         if p.timeControlStatus == .playing {
+            if !p.automaticallyWaitsToMinimizeStalling { p.automaticallyWaitsToMinimizeStalling = true }
             yenidenDeneme = 0
             beklemeSayaci = 0
             payiKoru()
