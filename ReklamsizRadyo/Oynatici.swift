@@ -38,6 +38,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var oturumGozlemcileri: [NSObjectProtocol] = []
     /// Yayın çalıyor görünüp kaç saniyedir ses gelmediği. Uzun sürerse yeniden bağlanılır.
     private var beklemeSayaci = 0
+    /// Kısa pencereli canlı yayınlarda canlıya uzaklık ayarlandı mı (her bağlantıda bir kez).
+    private var payAyarlandi = false
     private var zamanlayici: Timer?
     private var sonBayt: Int64 = 0
     private var yenidenDeneme = 0
@@ -133,6 +135,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             // Ses kalitesi değişmez; yayın daha hızlı açılır, daha az takılır ve daha az internet harcar.
             oge.preferredPeakBitRate = 900_000
             oge.preferredMaximumResolution = CGSize(width: 640, height: 360)
+            // Takılmadan sonra geride kalmak yerine canlıya yetişir; çalınacak parça listeden silinip donmaz.
+            oge.automaticallyPreservesTimeOffsetFromLive = true
         }
         let cikis = AVPlayerItemMetadataOutput(identifiers: nil)
         cikis.setDelegate(self, queue: .main)
@@ -163,6 +167,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         player = p
         sonBayt = 0
         beklemeSayaci = 0
+        payAyarlandi = false
         p.play()
         zamanlayici = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tik() }
@@ -366,12 +371,15 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             if s.isFinite { sure = s }
             return
         }
+        if !payAyarlandi { canliPayiAyarla() }
         if p.timeControlStatus == .playing {
             yenidenDeneme = 0
             beklemeSayaci = 0
+            payiKoru()
         } else if caliyor {
-            // Yayın takıldı ya da iPhone durdurdu: 15 saniye ses gelmezse yeniden bağlan.
+            // Yayın takıldı: önce canlıya atla, 15 saniyede hâlâ ses yoksa baştan bağlan.
             beklemeSayaci += 1
+            if beklemeSayaci == 4 { canliyaAtla() }
             if beklemeSayaci >= 15 {
                 beklemeSayaci = 0
                 yayinKoptu()
@@ -393,6 +401,43 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             bilgiyiGuncelle()
             limitUyarisi = LimitUyarisi(url: k.url, sinirMB: sinir, guncelMB: toplam / (1024 * 1024))
         }
+    }
+
+    // MARK: Kısa pencereli canlı yayınlar
+    // Birçok yayın yalnızca son 9-24 saniyeyi tutuyor. Apple'ın oynatıcısı canlıdan fazla geride başlayınca
+    // küçük bir yavaşlamada çalınacak parça silinmiş oluyor ve yayın donuyordu (Safari'de de aynısı oluyor).
+
+    /// Canlı penceresi: oynatıcının geri sarılabildiği aralık. Dosyalarda ve düz radyo yayınlarında yok.
+    private var canliPencere: CMTimeRange? {
+        guard let o = player?.currentItem, o.duration.isIndefinite,
+              let r = o.seekableTimeRanges.last?.timeRangeValue, r.duration.seconds.isFinite, r.duration.seconds > 0 else { return nil }
+        return r
+    }
+
+    /// Canlıdan ne kadar geride çalınacağı: pencerenin yaklaşık yarısı, en az 2 en çok 10 saniye.
+    private func canliPay(_ r: CMTimeRange) -> CMTime {
+        CMTime(seconds: max(2, min(r.duration.seconds * 0.4, 10)), preferredTimescale: 600)
+    }
+
+    private func canliPayiAyarla() {
+        guard let r = canliPencere, let o = player?.currentItem else { return }
+        payAyarlandi = true
+        guard r.duration.seconds < 60 else { return }
+        let pay = canliPay(r)
+        o.configuredTimeOffsetFromLive = pay
+        player?.seek(to: CMTimeSubtract(r.end, pay))
+    }
+
+    /// Çalınan yer pencerenin başına çok yaklaştıysa, parça silinmeden canlıya yaklaş.
+    private func payiKoru() {
+        guard let p = player, let r = canliPencere, r.duration.seconds < 60 else { return }
+        if CMTimeSubtract(p.currentTime(), r.start).seconds < 1 { canliyaAtla() }
+    }
+
+    private func canliyaAtla() {
+        guard let p = player, let r = canliPencere else { return }
+        p.seek(to: CMTimeSubtract(r.end, canliPay(r)))
+        p.play()
     }
 
     /// "Sıfırla ve Devam Et"
