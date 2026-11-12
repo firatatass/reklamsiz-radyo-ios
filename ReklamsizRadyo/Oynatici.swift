@@ -40,6 +40,10 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var beklemeSayaci = 0
     /// Kısa pencereli canlı yayınlarda canlıya uzaklık ayarlandı mı (her bağlantıda bir kez).
     private var payAyarlandi = false
+    /// Her bağlantı denemesinin numarası: eski bir denemenin geç biten hazırlığı yeni yayını bozmasın.
+    private var baglantiNo = 0
+    /// Yayın uygulama içi aracıdan (CanliTampon) mı çalıyor.
+    private var tamponlu = false
     private var zamanlayici: Timer?
     private var sonBayt: Int64 = 0
     private var yenidenDeneme = 0
@@ -118,16 +122,34 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
 
     private func oynaticiKur(_ k: Kayit) {
         try? AVAudioSession.sharedInstance().setActive(true)
-        let url: URL
+        baglantiNo += 1
+        let no = baglantiNo
         if k.dosyaMi {
-            url = URL(fileURLWithPath: k.url)
-        } else {
-            guard let u = URL(string: Self.calinabilirAdres(k.url)) else {
-                hata()
-                return
-            }
-            url = u
+            CanliTampon.shared.durdur()
+            tamponlu = false
+            oynaticiyiBaslat(k, adres: URL(fileURLWithPath: k.url))
+            return
         }
+        guard let u = URL(string: Self.calinabilirAdres(k.url)) else {
+            hata()
+            return
+        }
+        guard CanliTampon.hlsOlabilir(u) else {
+            CanliTampon.shared.durdur()
+            tamponlu = false
+            oynaticiyiBaslat(k, adres: u)
+            return
+        }
+        // HLS yayınları uygulama içi aracıdan çalınır; uygun değilse yayın doğrudan açılır.
+        Task {
+            let yerel = await CanliTampon.shared.hazirla(u, kimlik: Self.kimlik(u))
+            guard self.baglantiNo == no, self.caliyor, self.calan?.url == k.url else { return }
+            self.tamponlu = yerel != nil
+            self.oynaticiyiBaslat(k, adres: yerel ?? u)
+        }
+    }
+
+    private func oynaticiyiBaslat(_ k: Kayit, adres url: URL) {
         let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: Self.kimlik(url)])
         let oge = AVPlayerItem(asset: asset)
         if !k.dosyaMi {
@@ -247,6 +269,9 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     private func temizle() {
+        baglantiNo += 1
+        CanliTampon.shared.durdur()
+        tamponlu = false
         zamanlayici?.invalidate()
         zamanlayici = nil
         gozlemciler.forEach { $0.invalidate() }
@@ -420,6 +445,11 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     private func canliPayiAyarla() {
+        // Aracıdan çalan yayında liste zaten uzun: ayar gerekmez.
+        if tamponlu {
+            payAyarlandi = true
+            return
+        }
         guard let r = canliPencere, let o = player?.currentItem else { return }
         payAyarlandi = true
         guard r.duration.seconds < 60 else { return }
@@ -430,7 +460,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
 
     /// Çalınan yer pencerenin başına çok yaklaştıysa, parça silinmeden canlıya yaklaş.
     private func payiKoru() {
-        guard let p = player, let r = canliPencere, r.duration.seconds < 60 else { return }
+        guard !tamponlu, let p = player, let r = canliPencere, r.duration.seconds < 60 else { return }
         if CMTimeSubtract(p.currentTime(), r.start).seconds < 1 { canliyaAtla() }
     }
 
