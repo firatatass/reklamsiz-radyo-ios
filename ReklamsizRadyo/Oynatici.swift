@@ -198,9 +198,9 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         cikis.setDelegate(self, queue: .main)
         oge.add(cikis)
         let p = AVPlayer(playerItem: oge)
-        // Canlı yayın ilk parça gelir gelmez başlasın (açılış hızlansın); çalmaya başlayınca
-        // Apple'ın takılmayı önleyen beklemesi yeniden açılır (tik). Aracıdan çalanlarda değişmez.
-        p.automaticallyWaitsToMinimizeStalling = k.dosyaMi || tamponlu
+        // Apple'ın beklemesi açık kalır: kapatınca oynatıcı ilk anda veri olmadığı için kendini
+        // duraklatıyor ve bir daha kendiliğinden başlamıyordu (ölçüm kaydında görüldü, açılışı uzatıyordu).
+        p.automaticallyWaitsToMinimizeStalling = true
         p.volume = sesCarpani * (kisik ? 0.25 : 1)
         gozlemciler = [
             oge.observe(\.status) { [weak self] o, _ in
@@ -509,7 +509,6 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         }
         if !payAyarlandi { canliPayiAyarla() }
         if p.timeControlStatus == .playing {
-            if !p.automaticallyWaitsToMinimizeStalling { p.automaticallyWaitsToMinimizeStalling = true }
             yenidenDeneme = 0
             beklemeSayaci = 0
             payiKoru()
@@ -581,8 +580,9 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     private func canliyaAtla() {
-        guard let p = player, let r = canliPencere else { return }
-        p.seek(to: CMTimeSubtract(r.end, canliPay(r)))
+        guard let p = player else { return }
+        // Yayın penceresi henüz bilinmiyorsa yalnızca yeniden başlatılır (önceden hiçbir şey yapılmıyordu).
+        if let r = canliPencere { p.seek(to: CMTimeSubtract(r.end, canliPay(r))) }
         p.play()
     }
 
