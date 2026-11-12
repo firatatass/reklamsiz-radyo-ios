@@ -44,6 +44,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var baglantiNo = 0
     /// Yayın uygulama içi aracıdan (CanliTampon) mı çalıyor.
     private var tamponlu = false
+    /// Yayın açılamadığında Apple'ın verdiği hata (yalnızca geliştiricinin test derlemesinde gösterilir).
+    private var sonHata = ""
     private var zamanlayici: Timer?
     private var sonBayt: Int64 = 0
     private var yenidenDeneme = 0
@@ -116,6 +118,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         konum = 0
         sure = 0
         yenidenDeneme = 0
+        sonHata = ""
         veri = ayar.integer(forKey: "data_usage_" + k.url)
         oynaticiKur(k)
     }
@@ -345,13 +348,24 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
 
     private func hata() {
         caliyor = false
-        Bildirim.shared.goster("Bağlantı hatası: Yayın açılamıyor")
+        Bildirim.shared.goster(testAyariVar && !sonHata.isEmpty
+                               ? "Bağlantı hatası: Yayın açılamıyor. Ayrıntı: \(sonHata)"
+                               : "Bağlantı hatası: Yayın açılamıyor")
         bilgiyiGuncelle()
     }
 
     /// Canlı yayın koptu ya da açılamadı: birkaç kez artan aralıklarla yeniden bağlan.
     private func yayinKoptu() {
         guard let k = calan, caliyor else { return }
+        if let o = player?.currentItem {
+            var parcalar: [String] = []
+            if let e = o.error as NSError? { parcalar.append("\(e.localizedDescription) (\(e.domain) \(e.code))") }
+            if let olay = o.errorLog()?.events.last {
+                parcalar.append("kod \(olay.errorStatusCode) \(olay.errorComment ?? "")")
+            }
+            if tamponlu { parcalar.append("aracı") }
+            if !parcalar.isEmpty { sonHata = parcalar.joined(separator: ", ") }
+        }
         if !k.dosyaMi && yenidenDeneme < 5 {
             yenidenDeneme += 1
             let bekle = UInt64(1 << (yenidenDeneme - 1)) * 1_000_000_000

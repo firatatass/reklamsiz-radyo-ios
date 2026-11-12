@@ -116,19 +116,30 @@ final class CanliTampon: @unchecked Sendable {
                     bekleyenKesinti = true
                 }
             }
-            // İlk açılışta hızlı başlamak için listedeki son 5 parça alınır.
-            let alt = sonKaynakNo ?? (son - min(l.satirlar.count, 5))
+            // İlk açılışta hızlı başlamak için listedeki son 3 parça alınır.
+            let alt = sonKaynakNo ?? (son - min(l.satirlar.count, 3))
             for (i, satir) in l.satirlar.enumerated() where l.sira + i > alt {
                 yeniler.append((l.sira + i, satir))
             }
         }
-        for (no, satir) in yeniler {
-            if Task.isCancelled { return }
-            guard let u = URL(string: satir.uri, relativeTo: adres)?.absoluteURL else { continue }
-            var veri: Data?
-            for _ in 0..<2 where veri == nil {
-                veri = await veriIndir(u, kimlik: kimlik)
+        // Yeni parçalar aynı anda indirilir (açılış hızlansın), listeye sırayla eklenir.
+        let adresler = yeniler.map { URL(string: $0.1.uri, relativeTo: adres)?.absoluteURL }
+        var indirilen = await withTaskGroup(of: (Int, Data?).self) { grup -> [Int: Data] in
+            for (i, u) in adresler.enumerated() {
+                guard let u else { continue }
+                grup.addTask { (i, await self.veriIndir(u, kimlik: kimlik)) }
             }
+            var sonuc: [Int: Data] = [:]
+            for await (i, veri) in grup {
+                if let veri { sonuc[i] = veri }
+            }
+            return sonuc
+        }
+        for (i, (no, satir)) in yeniler.enumerated() {
+            if Task.isCancelled { return }
+            guard let u = adresler[i] else { continue }
+            var veri = indirilen.removeValue(forKey: i)
+            if veri == nil { veri = await veriIndir(u, kimlik: kimlik) }
             kuyruk.sync {
                 guard oturum == oturumNo else { return }
                 if let veri {
