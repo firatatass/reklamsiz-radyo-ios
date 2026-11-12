@@ -44,6 +44,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var baglantiNo = 0
     /// Yayın uygulama içi aracıdan (CanliTampon) mı çalıyor.
     private var tamponlu = false
+    /// Aracıdan açılamayan yayın bir sonraki denemede doğrudan açılır.
+    private var dogrudanCal = false
     /// Yayın açılamadığında Apple'ın verdiği hata (yalnızca geliştiricinin test derlemesinde gösterilir).
     private var sonHata = ""
     private var zamanlayici: Timer?
@@ -119,6 +121,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         sure = 0
         yenidenDeneme = 0
         sonHata = ""
+        dogrudanCal = false
         veri = ayar.integer(forKey: "data_usage_" + k.url)
         oynaticiKur(k)
     }
@@ -137,7 +140,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             hata()
             return
         }
-        guard CanliTampon.hlsOlabilir(u) else {
+        guard CanliTampon.hlsOlabilir(u), !dogrudanCal else {
             CanliTampon.shared.durdur()
             tamponlu = false
             oynaticiyiBaslat(k, adres: u)
@@ -366,6 +369,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             if tamponlu { parcalar.append("aracı") }
             if !parcalar.isEmpty { sonHata = parcalar.joined(separator: ", ") }
         }
+        // Aracıdan çalan yayın koptuysa bir sonraki deneme doğrudan yayına bağlanır.
+        if tamponlu { dogrudanCal = true }
         if !k.dosyaMi && yenidenDeneme < 5 {
             yenidenDeneme += 1
             let bekle = UInt64(1 << (yenidenDeneme - 1)) * 1_000_000_000

@@ -34,6 +34,9 @@ final class CanliTampon: @unchecked Sendable {
 
     /// Telefonda tutulan yayın süresi (saniye).
     private let tutulacakSure: Double = 120
+    /// Kaynak liste bundan uzunsa yayının penceresi zaten yeterli: aracı kullanılmaz, yayın doğrudan çalar
+    /// (ATV, Kanal D, Star TV gibi uzun listeli yayınlar aracıdan geçince açılmıyordu).
+    private let kisaPencereSiniri: Double = 45
 
     private let kuyruk = DispatchQueue(label: "reklamsizradyo.canlitampon")
     private var dinleyici: NWListener?
@@ -116,8 +119,9 @@ final class CanliTampon: @unchecked Sendable {
                     bekleyenKesinti = true
                 }
             }
-            // İlk açılışta hızlı başlamak için listedeki son 3 parça alınır.
-            let alt = sonKaynakNo ?? (son - min(l.satirlar.count, 3))
+            // İlk açılışta listedeki bütün parçalar alınır (kısa liste, aynı anda iner):
+            // oynatıcı başlamak için yayının sonundan en az üç parça süresi ister.
+            let alt = sonKaynakNo ?? (l.sira - 1)
             for (i, satir) in l.satirlar.enumerated() where l.sira + i > alt {
                 yeniler.append((l.sira + i, satir))
             }
@@ -177,10 +181,16 @@ final class CanliTampon: @unchecked Sendable {
             if r.0.range(of: #"#EXT-X-MEDIA:[^\n]*TYPE=AUDIO[^\n]*URI="#, options: .regularExpression) != nil { return nil }
             guard let alt = enDusukAltListe(r.0, taban: r.1), let r2 = await metinIndir(alt, kimlik: kimlik) else { return nil }
             let l = cozumle(r2.0)
-            return l.uygunDegil || l.satirlar.isEmpty ? nil : (l, r2.1)
+            return uygun(l) ? (l, r2.1) : nil
         }
         let l = cozumle(r.0)
-        return l.uygunDegil || l.satirlar.isEmpty ? nil : (l, r.1)
+        return uygun(l) ? (l, r.1) : nil
+    }
+
+    /// Aracı yalnızca kısa pencereli (donma yapan) yayınlarda kullanılır.
+    private func uygun(_ l: MedyaListesi) -> Bool {
+        if l.uygunDegil || l.satirlar.isEmpty { return false }
+        return l.satirlar.reduce(0) { $0 + $1.sure } < kisaPencereSiniri
     }
 
     /// Uygulama yalnızca ses çaldığı için sesi olan en düşük kaliteli alt liste seçilir.
