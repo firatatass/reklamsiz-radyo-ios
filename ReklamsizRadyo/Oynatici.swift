@@ -34,6 +34,10 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var kayitAboneligi: AnyCancellable?
     private var gozlemciler: [NSKeyValueObservation] = []
     private var bildirimGozlemcisi: NSObjectProtocol?
+    private var hataGozlemcisi: NSObjectProtocol?
+    private var oturumGozlemcileri: [NSObjectProtocol] = []
+    /// Yayın çalıyor görünüp kaç saniyedir ses gelmediği. Uzun sürerse yeniden bağlanılır.
+    private var beklemeSayaci = 0
     private var zamanlayici: Timer?
     private var sonBayt: Int64 = 0
     private var yenidenDeneme = 0
@@ -52,6 +56,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         super.init()
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         uzaktanKomutlariKur()
+        oturumuDinle()
         kayitAboneligi = Kaydedici.shared.$kayitta.sink { [weak self] v in self?.kayitYapiliyor = v }
     }
 
@@ -123,6 +128,12 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         }
         let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: Self.kimlik(url)])
         let oge = AVPlayerItem(asset: asset)
+        if !k.dosyaMi {
+            // Uygulama yalnızca ses çalar: görüntülü yayınlarda en düşük görüntü kalitesi seçilir.
+            // Ses kalitesi değişmez; yayın daha hızlı açılır, daha az takılır ve daha az internet harcar.
+            oge.preferredPeakBitRate = 900_000
+            oge.preferredMaximumResolution = CGSize(width: 640, height: 360)
+        }
         let cikis = AVPlayerItemMetadataOutput(identifiers: nil)
         cikis.setDelegate(self, queue: .main)
         oge.add(cikis)
@@ -131,15 +142,27 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         p.volume = sesCarpani * (kisik ? 0.25 : 1)
         gozlemciler = [
             oge.observe(\.status) { [weak self] o, _ in
-                Task { @MainActor in if o.status == .failed { self?.yayinKoptu() } }
+                Task { @MainActor in
+                    if o.status == .failed { self?.yayinKoptu() }
+                    // Görüntü ekranda gösterilmediği için çözülmez, yalnızca ses çalınır.
+                    if o.status == .readyToPlay {
+                        for t in o.tracks where t.assetTrack?.mediaType == .video { t.isEnabled = false }
+                    }
+                }
             },
         ]
         bildirimGozlemcisi = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: oge, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.sonaGeldi() }
         }
+        // Yayın yarıda hata verip durursa yeniden bağlanılır.
+        hataGozlemcisi = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime, object: oge, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.yayinKoptu() }
+        }
         player = p
         sonBayt = 0
+        beklemeSayaci = 0
         p.play()
         zamanlayici = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tik() }
@@ -223,10 +246,71 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         zamanlayici = nil
         gozlemciler.forEach { $0.invalidate() }
         gozlemciler = []
-        if let g = bildirimGozlemcisi { NotificationCenter.default.removeObserver(g) }
-        bildirimGozlemcisi = nil
+        ogeGozlemcileriniKaldir()
         player?.pause()
         player = nil
+    }
+
+    private func ogeGozlemcileriniKaldir() {
+        if let g = bildirimGozlemcisi { NotificationCenter.default.removeObserver(g) }
+        bildirimGozlemcisi = nil
+        if let g = hataGozlemcisi { NotificationCenter.default.removeObserver(g) }
+        hataGozlemcisi = nil
+    }
+
+    /// Telefon araması, Siri, sesli asistan, başka bir uygulamanın sesi veya kulaklık çıkarılması gibi
+    /// durumlarda iPhone yayını durdurur. Önceden uygulama bunu fark etmiyor, yayın kapatıp açınca düzeliyordu.
+    private func oturumuDinle() {
+        let nc = NotificationCenter.default
+        oturumGozlemcileri = [
+            nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
+                let tur = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                Task { @MainActor in self?.sesKesintisi(tur) }
+            },
+            nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
+                let neden = n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                Task { @MainActor in self?.sesYoluDegisti(neden) }
+            },
+            nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.sesServisiSifirlandi() }
+            },
+        ]
+    }
+
+    private func sesKesintisi(_ tur: UInt?) {
+        guard let tur, AVAudioSession.InterruptionType(rawValue: tur) == .ended, caliyor, let k = calan else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
+        if k.dosyaMi {
+            player?.play()
+        } else {
+            yenidenBaglan(k)
+        }
+    }
+
+    /// Kulaklık çıkarılınca yayın hoparlörden devam etmesin diye durur (Apple'ın önerdiği davranış).
+    private func sesYoluDegisti(_ neden: UInt?) {
+        guard let neden, AVAudioSession.RouteChangeReason(rawValue: neden) == .oldDeviceUnavailable, caliyor else { return }
+        player?.pause()
+        caliyor = false
+        bilgiyiGuncelle()
+    }
+
+    private func sesServisiSifirlandi() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        guard caliyor, let k = calan else { return }
+        if k.dosyaMi {
+            caliyor = false
+            bilgiyiGuncelle()
+        } else {
+            yenidenBaglan(k)
+        }
+    }
+
+    /// Canlı yayını baştan, en güncel yerinden yeniden açar.
+    private func yenidenBaglan(_ k: Kayit) {
+        temizleAmaKoru()
+        yenidenDeneme = 0
+        oynaticiKur(k)
     }
 
     private func hata() {
@@ -257,6 +341,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         zamanlayici = nil
         gozlemciler.forEach { $0.invalidate() }
         gozlemciler = []
+        ogeGozlemcileriniKaldir()
         player?.pause()
         player = nil
     }
@@ -281,7 +366,18 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             if s.isFinite { sure = s }
             return
         }
-        if p.timeControlStatus == .playing { yenidenDeneme = 0 }
+        if p.timeControlStatus == .playing {
+            yenidenDeneme = 0
+            beklemeSayaci = 0
+        } else if caliyor {
+            // Yayın takıldı ya da iPhone durdurdu: 15 saniye ses gelmezse yeniden bağlan.
+            beklemeSayaci += 1
+            if beklemeSayaci >= 15 {
+                beklemeSayaci = 0
+                yayinKoptu()
+                return
+            }
+        }
         let bayt = p.currentItem?.accessLog()?.events.reduce(Int64(0)) { $0 + max(0, $1.numberOfBytesTransferred) } ?? 0
         let fark = bayt - sonBayt
         sonBayt = bayt
