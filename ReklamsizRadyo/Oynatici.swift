@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import MediaPlayer
+import UIKit
 
 /// Veri sınırı dolunca gösterilen uyarı (Android RADIO_LIMIT_REACHED).
 struct LimitUyarisi: Identifiable {
@@ -16,7 +17,9 @@ struct LimitUyarisi: Identifiable {
 final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPushDelegate {
     @Published private(set) var calan: Kayit?
     /// Android'deki isPlaying: kullanıcı çalmayı istedi mi (bağlanırken de true).
-    @Published private(set) var caliyor = false
+    @Published private(set) var caliyor = false {
+        didSet { ekranKilidiniGuncelle() }
+    }
     /// Radyonun gönderdiği yazı (şarkı adı vb.), Android'deki activeMetadata.
     @Published private(set) var bilgi = ""
     /// Önceki/Sonraki için, çalmanın başlatıldığı listenin kopyası (Android playingRadioList).
@@ -279,6 +282,18 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             konum = eski
         }
         bilgiyiGuncelle()
+    }
+
+    /// Kayıt, radyo ya da TV kanalı silindi: çalıyorsa tamamen durur, Önceki/Sonraki listesinden çıkar.
+    func silindi(_ k: Kayit) {
+        liste.removeAll { $0.url == k.url && $0.ad == k.ad }
+        if let c = calan, c.url == k.url, c.ad == k.ad { durdur() }
+    }
+
+    /// Ayarlar > Ekranı Açık Tut: açıkken yayın çaldığı sürece ekran kendiliğinden kapanmaz.
+    /// Kapalıyken ya da yayın durunca telefonun Otomatik Kilit süresi geçerlidir.
+    func ekranKilidiniGuncelle() {
+        UIApplication.shared.isIdleTimerDisabled = caliyor && ayar.bool(forKey: "ekrani_acik_tut")
     }
 
     func durdur() {

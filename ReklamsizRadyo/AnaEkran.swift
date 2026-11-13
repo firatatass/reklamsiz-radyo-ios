@@ -10,6 +10,8 @@ struct AnaEkran: View {
     @EnvironmentObject private var asistan: SesliAsistan
 
     @AppStorage("last_tab") private var sekme = "home"
+    /// Ayarlardan: sekmeler ekranın altında mı (varsayılan üstte, bugünkü görünüm).
+    @AppStorage("sekmeler_altta") private var sekmelerAltta = false
     @AppStorage("last_category") private var kategori = "Tümü"
     @AppStorage("tab_order_index") private var sekmeSiraNo = 0
     @AppStorage("sekme_sirasi") private var kayitliSekmeSirasi = ""
@@ -36,6 +38,9 @@ struct AnaEkran: View {
     /// İlk kurulumda bir kez gösterilen teşekkür yazısı; "Kapat"a basılınca bir daha gösterilmez.
     @AppStorage("tesekkur_bilgisi_gosterildi") private var gelistiriciBilgisiGosterildi = false
     @State private var gelistiriciBilgisiAcik = false
+    /// Yenilikler penceresinin gösterildiği son sürüm.
+    @AppStorage("yenilikler_gosterilen_surum") private var yeniliklerSurum = ""
+    @State private var yeniliklerAcik = false
     @State private var ayarlarAcik = false
     @State private var hakkindaAcik = false
     @Environment(\.openURL) private var adresAc
@@ -111,10 +116,12 @@ struct AnaEkran: View {
                 .padding(.horizontal)
                 .padding(.vertical, 6)
             // Android'de de sekmeler kod içinde arama kutusunun hemen altına, kategoriler onların altına taşınıyor.
-            sekmeCubugu
+            if !sekmelerAltta { sekmeCubugu }
             if sekme == "home" && kategori != TV_KATEGORI && !listeDaraltildi { kategoriCubugu }
             liste
             if oynatici.calan != nil { kucukOynatici }
+            // Ayarlardan "Altta" seçildiyse aynı sekme çubuğu en altta, küçük oynatıcının altında durur.
+            if sekmelerAltta { sekmeCubugu }
         }
         .overlay(alignment: .bottom) {
             if let m = bildirim.metin {
@@ -123,7 +130,8 @@ struct AnaEkran: View {
                     .background(.black.opacity(0.8))
                     .foregroundColor(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .padding(.bottom, 90)
+                    // Sekmeler alttayken bildirim, küçük oynatıcının üstüne binmesin diye sekme çubuğu kadar yukarıda.
+                    .padding(.bottom, sekmelerAltta ? 142 : 90)
                     .accessibilityHidden(true)
             }
         }
@@ -134,6 +142,22 @@ struct AnaEkran: View {
             if !gelistiriciBilgisiGosterildi {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { gelistiriciBilgisiAcik = true }
             }
+            if yeniliklerSurum != Yenilikler.surum {
+                if yeniliklerBekliyor {
+                    // Güncelleyen kullanıcıya bu sürümde bir kez gösterilir.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { yeniliklerAcik = true }
+                } else {
+                    // Yeni kurulumda (ya da bu sürümün notu yoksa) gösterilmez.
+                    yeniliklerSurum = Yenilikler.surum
+                }
+            }
+        }
+        .sheet(isPresented: $yeniliklerAcik, onDismiss: {
+            // Kapat'a basınca (ya da pencere aşağı kaydırılınca) bu sürüm için bir daha açılmaz.
+            yeniliklerSurum = Yenilikler.surum
+            sonra { listeUyarisiniGoster() }
+        }) {
+            YeniliklerPenceresi()
         }
         .alert("Uygulamanın geliştirilmesindeki katkılarından dolayı Ahmet Yılmaz'a teşekkür ederiz.", isPresented: $gelistiriciBilgisiAcik) {
             Button("Kapat", role: .cancel) { gelistiriciBilgisiGosterildi = true }
@@ -346,8 +370,13 @@ struct AnaEkran: View {
     private var listeUyarisiZamani: Bool { listeUyarisiGerekli && !depo.listeIndiriliyor }
 
     /// Uygulama her açılışında en fazla bir kez gösterilir, öne her gelişte tekrar çıkmaz.
+    /// Güncelleyen kullanıcıya bu sürümün yenilikleri henüz gösterilmedi.
+    private var yeniliklerBekliyor: Bool {
+        gelistiriciBilgisiGosterildi && yeniliklerSurum != Yenilikler.surum && Yenilikler.buSurumunNotu != nil
+    }
+
     private func listeUyarisiniGoster() {
-        guard listeUyarisiZamani && gelistiriciBilgisiGosterildi && !listeUyarisiGosterildi else { return }
+        guard listeUyarisiZamani && gelistiriciBilgisiGosterildi && !listeUyarisiGosterildi && !yeniliklerBekliyor else { return }
         listeUyarisiGosterildi = true
         listeUyarisiAcik = true
     }
@@ -552,6 +581,9 @@ struct AnaEkran: View {
     }
 
     private func sil(_ k: Kayit) {
+        // Silinen kayıt, radyo ya da TV kanalı çalıyorsa önce tamamen durdurulur (ses, küçük oynatıcı,
+        // kilit ekranı bilgisi); Önceki/Sonraki listesinden de çıkarılır.
+        oynatici.silindi(k)
         if sekme == "rec" {
             if FileManager.default.fileExists(atPath: k.url) {
                 try? FileManager.default.removeItem(atPath: k.url)

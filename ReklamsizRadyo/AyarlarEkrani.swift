@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -16,9 +17,12 @@ struct AyarlarEkrani: View {
     @AppStorage("oynatici_penceresi_ac") private var oynaticiPenceresiAcilsin = false
     @AppStorage("yayin_ses_seviyesi") private var sesSeviyesi = 100
     @AppStorage("test_liste_kapali") private var testListeKapali = false
+    @AppStorage("sekmeler_altta") private var sekmelerAltta = false
+    @AppStorage("ekrani_acik_tut") private var ekraniAcikTut = false
+    @AppStorage(AsistanSesi.anahtar) private var asistanSesi = ""
 
     private enum AltPencere: Identifiable {
-        case uyku, sekme, bicim, tema, ses
+        case uyku, sekme, bicim, tema, ses, asistanSesi
         var id: Int { hashValue }
     }
 
@@ -48,11 +52,24 @@ struct AyarlarEkrani: View {
                     satir("Geri Yükle") { dosyaIsi = .geriYukle; dosyaSecici = true }
                 }
                 satir("Sekme Sırasını Değiştir") { altPencere = .sekme }
+                satir(sekmelerAltta ? "Sekmelerin Yeri: Altta" : "Sekmelerin Yeri: Üstte") {
+                    sekmelerAltta.toggle()
+                    bildirim.goster(sekmelerAltta ? "Sekmeler ekranın altına taşındı." : "Sekmeler ekranın üstüne taşındı.")
+                }
                 satir("Kayıt Formatı") { altPencere = .bicim }
                 satir("Yayın Ses Seviyesi: %\(sesSeviyesi)") { altPencere = .ses }
                 satir(oynaticiPenceresiAcilsin ? "Yayın Açılınca Oynatıcıyı Göster: Açık" : "Yayın Açılınca Oynatıcıyı Göster: Kapalı") {
                     oynaticiPenceresiAcilsin.toggle()
                     bildirim.goster(oynaticiPenceresiAcilsin ? "Yayın açılınca oynatıcı gösterilecek." : "Yayın açılınca oynatıcı gösterilmeyecek.")
+                }
+                satir(ekraniAcikTut ? "Ekranı Açık Tut: Açık" : "Ekranı Açık Tut: Kapalı") {
+                    ekraniAcikTut.toggle()
+                    oynatici.ekranKilidiniGuncelle()
+                    bildirim.goster(ekraniAcikTut ? "Yayın dinlerken ekran kapanmayacak." : "Ekran telefonun kilit süresine göre kapanacak.")
+                }
+                satir("Asistan Sesi: \(asistanSesiAdi)") {
+                    AsistanSesi.kaydaYaz()
+                    altPencere = .asistanSesi
                 }
                 satir("Tema Seçimi") { altPencere = .tema }
                 if !depo.listeKapali {
@@ -105,6 +122,9 @@ struct AyarlarEkrani: View {
         }
         .alert("Uyarı", isPresented: $temizlemeUyarisi) {
             Button("Evet", role: .destructive) {
+                // Silinen listeden çalan radyo ya da TV kanalı varsa durdurulur; kayıt dosyaları silinmediği için
+                // çalan bir kayıt devam eder.
+                if let c = oynatici.calan, !c.dosyaMi { oynatici.durdur() }
                 depo.tumunuSil()
                 bildirim.goster("Tüm radyo istasyonları silindi.")
             }
@@ -149,7 +169,21 @@ struct AyarlarEkrani: View {
             SecimPenceresi(baslik: "Tema Seçimi", secenekler: ["Açık Tema", "Koyu Tema", "Sistem Varsayılanı"], secili: tema) { i in
                 tema = i
             }
+        case .asistanSesi:
+            let sesler = AsistanSesi.turkceSesler
+            let varsayilan = AVSpeechSynthesisVoice(language: "tr-TR").map { "Varsayılan (\($0.name))" } ?? "Varsayılan"
+            SecimPenceresi(baslik: "Asistan Sesi", secenekler: [varsayilan] + sesler.map { AsistanSesi.ad($0) },
+                           secili: asistanSesi.isEmpty ? 0 : (sesler.firstIndex { $0.identifier == asistanSesi }.map { $0 + 1 })) { i in
+                asistanSesi = i == 0 ? "" : sesler[i - 1].identifier
+                AsistanSesi.dene()
+            }
         }
+    }
+
+    private var asistanSesiAdi: String {
+        if asistanSesi.isEmpty { return "Varsayılan" }
+        guard let v = AVSpeechSynthesisVoice(identifier: asistanSesi) else { return "Varsayılan" }
+        return AsistanSesi.ad(v)
     }
 
     private func dosyaSecildi(_ sonuc: Result<URL, Error>) {

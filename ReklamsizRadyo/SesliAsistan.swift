@@ -324,7 +324,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
         }
         let s = AVSpeechUtterance(string: metin)
-        s.voice = AVSpeechSynthesisVoice(language: "tr-TR")
+        s.voice = AsistanSesi.secili
         konusucu.speak(s)
     }
 
@@ -398,6 +398,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     func komutuIsle(_ hamMetin: String) {
         let metin = hamMetin.trimmingCharacters(in: .whitespaces)
         let k = KanalBulucu.normalize(metin)
+        OlcumKaydi.shared.yaz("asistan duydu: \"\(metin)\" (durum: \(durumMakinesi))")
 
         if ["iptal", "vazgec", "bosver", "istemiyorum", "vazgectim", "geri don"].contains(k), durumMakinesi != .bos {
             durumMakinesi = .bos
@@ -512,6 +513,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
         // 8. Kategori
         if let kat = kategoriBul(k) {
+            OlcumKaydi.shared.yaz("asistan: kategori \(kat)")
             let c = "\(kat) kategorisine geçildi."
             cevapYaz(c); konus(c)
             istek = .kategori(kat)
@@ -671,6 +673,9 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
         // 17. Radyo / TV aç
         let eslesen = kanalBul(metin, tumKayitlar)
+        if !eslesen.isEmpty {
+            OlcumKaydi.shared.yaz("asistan: \(eslesen.count) sonuç: \(eslesen.prefix(4).map(\.ad).joined(separator: ", "))")
+        }
         if eslesen.count == 1 {
             let r = eslesen[0]
             let c = "\(r.ad) açılıyor..."
@@ -701,6 +706,7 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return
         }
 
+        OlcumKaydi.shared.yaz("asistan: anlayamadı")
         let c = "\"\(metin)\" komutunu anlayamadım. Bir radyo adı söyleyebilir, zamanlayıcı kurabilir, ya da 'rehber' diyebilirsiniz."
         durumYaz(c, hata: true)
         konus(c, sonraDinle: true)
@@ -1123,7 +1129,10 @@ final class SesliAsistan: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         temiz = RX.degistir(temiz, "\\b\\d+\\b", " ")
         temiz = RX.degistir(temiz, "\\s+", " ").trimmingCharacters(in: .whitespaces)
         if temiz.count < 2 { return [] }
-        let girdiParcalari = temiz.bol().filter { $0.count >= 2 }
+        // "TV" ve "televizyon" kanal adı değil, tür bilgisi: tek başına kalırsa adında TV geçen bütün kanallar
+        // eşleşiyordu ("Aksu TV aç" yanlış duyulunca 122 sonuç okundu). Yalnızca bunlar kaldıysa kanal aranmaz.
+        let turSozleri: Set<String> = ["tv", "televizyon", "televizyonu"]
+        let girdiParcalari = temiz.bol().filter { $0.count >= 2 && !turSozleri.contains($0) }
         if girdiParcalari.isEmpty { return [] }
 
         let tam = kayitlar.filter { KanalBulucu.normalize($0.ad) == temiz }
