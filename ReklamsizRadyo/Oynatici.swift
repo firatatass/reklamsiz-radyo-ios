@@ -48,6 +48,8 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var dogrudanCal = false
     /// Uzun pencereli yayın, kaydedilen alt listesinden mi çalıyor.
     private var altListeden = false
+    /// Saati düzeltilen yayın aracıdan açılamazsa doğrudan çalınacak alt liste.
+    private var araciYedegi: URL?
     /// Ölçüm kaydı (yalnızca test derlemesi): kullanıcının yayını açtığı an ve ilk ses.
     private var acilisBasi = Date()
     private var sesBasladi = false
@@ -128,6 +130,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         yenidenDeneme = 0
         sonHata = ""
         dogrudanCal = false
+        araciYedegi = nil
         acilisBasi = Date()
         OlcumKaydi.shared.yaz("=== AÇ: \(k.ad) | \(k.url)")
         veri = ayar.integer(forKey: "data_usage_" + k.url)
@@ -151,6 +154,13 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             hata()
             return
         }
+        if dogrudanCal, let yedek = araciYedegi {
+            CanliTampon.shared.durdur()
+            tamponlu = false
+            olc("aracıdan açılamadı: alt listeden doğrudan")
+            oynaticiyiBaslat(k, adres: yedek)
+            return
+        }
         guard CanliTampon.hlsOlabilir(u), !dogrudanCal else {
             CanliTampon.shared.durdur()
             tamponlu = false
@@ -167,8 +177,9 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             }
             guard self.baglantiNo == no, self.caliyor, self.calan?.url == k.url else { return }
             switch sonuc {
-            case .araci(let yerel):
+            case .araci(let yerel, let yedek):
                 self.tamponlu = true
+                self.araciYedegi = yedek
                 self.oynaticiyiBaslat(k, adres: yerel)
             case .dogrudan(let alt):
                 self.tamponlu = false
@@ -514,16 +525,10 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             payiKoru()
         } else if caliyor {
             // Yayın takıldı: önce canlıya atla, 15 saniyede hâlâ ses yoksa baştan bağlan.
-            // Yayın daha ilk kez hazırlanırken atlanmaz: atlamak indirileni çöpe atıp açılışı uzatıyordu
-            // (ölçüm kaydında Show Max 4. saniyedeki atlamadan sonra 12,6 saniyede açıldı).
             beklemeSayaci += 1
             if beklemeSayaci == 4 {
-                if p.currentItem?.status == .readyToPlay {
-                    olc("4 sn ses yok: canlıya atlanıyor")
-                    canliyaAtla()
-                } else {
-                    olc("4 sn ses yok: yayın hâlâ hazırlanıyor, bekleniyor")
-                }
+                olc("4 sn ses yok: canlıya atlanıyor")
+                canliyaAtla()
             }
             if beklemeSayaci >= 15 {
                 olc("15 sn ses yok: yeniden bağlanılıyor")

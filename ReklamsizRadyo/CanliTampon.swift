@@ -49,6 +49,9 @@ final class CanliTampon: @unchecked Sendable {
     private var sonKaynakNo: Int?
     private var bekleyenKesinti = false
     private var gorev: Task<Void, Never>?
+    /// Bu oturumda parçaların saati düzeltilecek mi, ne kadar (90 kHz birim).
+    private var saatDuzelt = false
+    private var kaydirma: Int64?
 
     /// Adres bir HLS yayını olabilir mi (.m3u8). Asıl karar liste indirilince verilir.
     static func hlsOlabilir(_ u: URL) -> Bool {
@@ -56,15 +59,29 @@ final class CanliTampon: @unchecked Sendable {
     }
 
     enum Hazirlik {
-        /// Kısa pencereli yayın: telefondaki aracı adresinden çalınır.
-        case araci(URL)
+        /// Kısa pencereli ya da görüntü saati bozuk yayın: telefondaki aracı adresinden çalınır.
+        /// `yedek`: aracıdan açılamazsa doğrudan çalınacak alt liste (yalnızca saati bozuk yayınlarda).
+        case araci(URL, yedek: URL?)
         /// Uzun pencereli yayın: aracısız, doğrudan sesi olan en düşük kaliteli listeden çalınır.
         case dogrudan(URL)
         /// Liste okunamadı ya da uygun değil: yayının kendi adresi çalınır.
         case yok
     }
 
-    private static let uzunListeAnahtari = "uzun_liste_adresleri"
+    /// Yeni anahtar: eski kayıtlar görüntü saati ölçülmeden yapılmıştı, her kanal bir kez yeniden ölçülür.
+    private static let uzunListeAnahtari = "uzun_liste_adresleri_2"
+    private static let saatiBozukAnahtari = "saati_bozuk_adresler"
+
+    /// Görüntü saati bozuk olduğu ölçülen yayın (Show Max): her açılışta aracıdan düzeltilerek çalınır.
+    private static func saatiBozuk(_ kaynak: URL) -> Bool {
+        (UserDefaults.standard.stringArray(forKey: saatiBozukAnahtari) ?? []).contains(kaynak.absoluteString)
+    }
+
+    private static func saatiBozukKaydet(_ kaynak: URL) {
+        var l = UserDefaults.standard.stringArray(forKey: saatiBozukAnahtari) ?? []
+        if !l.contains(kaynak.absoluteString) { l.append(kaynak.absoluteString) }
+        UserDefaults.standard.set(l, forKey: saatiBozukAnahtari)
+    }
 
     /// Daha önce uzun pencereli olduğu görülen yayın: ölçmeden hemen açılır.
     private static func uzunListe(_ kaynak: URL) -> URL? {
@@ -99,9 +116,19 @@ final class CanliTampon: @unchecked Sendable {
         }
         let pencere = bulunan.0.satirlar.reduce(0, { $0 + $1.sure })
         OlcumKaydi.shared.yaz("ölçüm: \(bulunan.0.satirlar.count) parça, \(Int(pencere)) sn pencere, hedef \(bulunan.0.hedef) (\(gecenSure(t0)))")
-        if pencere >= kisaPencereSiniri {
-            Self.uzunListeKaydet(kaynak, bulunan.1)
-            return .dogrudan(bulunan.1)
+        var saatBozuk = Self.saatiBozuk(kaynak)
+        if pencere >= kisaPencereSiniri && !saatBozuk {
+            // İlk kez: son parçaya bakılır. Görüntü saati bozuksa (Show Max) yayın aracıdan düzeltilerek çalınır,
+            // değilse eskisi gibi doğrudan.
+            if let s = bulunan.0.satirlar.last, let u = URL(string: s.uri, relativeTo: bulunan.1)?.absoluteURL,
+               let v = await veriIndir(u, kimlik: kimlik, sure: 5), let c = ZamanDuzeltici.kaydirma(v) {
+                OlcumKaydi.shared.yaz("ölçüm: görüntü saati \(String(format: "%.1f", Double(c + 9000) / 90000)) sn geride, düzeltilecek (\(gecenSure(t0)))")
+                Self.saatiBozukKaydet(kaynak)
+                saatBozuk = true
+            } else {
+                Self.uzunListeKaydet(kaynak, bulunan.1)
+                return .dogrudan(bulunan.1)
+            }
         }
         guard let port = await dinleyiciyiBaslat() else { return .yok }
         let yeniOturum = String(UUID().uuidString.prefix(8))
@@ -113,6 +140,8 @@ final class CanliTampon: @unchecked Sendable {
             sonKaynakNo = nil
             bekleyenKesinti = false
             hedefSure = max(bulunan.0.hedef, 1)
+            saatDuzelt = saatBozuk
+            kaydirma = nil
         }
         await isle(bulunan.0, adres: bulunan.1, kimlik: kimlik, oturumNo: yeniOturum)
         let ilk = kuyruk.sync { parcalar.count }
@@ -123,7 +152,7 @@ final class CanliTampon: @unchecked Sendable {
             await self?.dongu(adres, kimlik: kimlik, oturumNo: yeniOturum)
         }
         guard let yerel = URL(string: "http://127.0.0.1:\(port)/\(yeniOturum)/canli.m3u8") else { return .yok }
-        return .araci(yerel)
+        return .araci(yerel, yedek: saatBozuk ? bulunan.1 : nil)
     }
 
     func durdur() {
@@ -172,7 +201,8 @@ final class CanliTampon: @unchecked Sendable {
             }
             // İlk açılışta listedeki bütün parçalar alınır (kısa liste, aynı anda iner):
             // oynatıcı başlamak için yayının sonundan en az üç parça süresi ister.
-            let alt = sonKaynakNo ?? (l.sira - 1)
+            // Saati düzeltilen uzun listede yalnızca son 4 parça alınır.
+            let alt = sonKaynakNo ?? (saatDuzelt ? son - min(l.satirlar.count, 4) : l.sira - 1)
             for (i, satir) in l.satirlar.enumerated() where l.sira + i > alt {
                 yeniler.append((l.sira + i, satir))
             }
@@ -195,6 +225,12 @@ final class CanliTampon: @unchecked Sendable {
             guard let u = adresler[i] else { continue }
             var veri = indirilen.removeValue(forKey: i)
             if veri == nil { veri = await veriIndir(u, kimlik: kimlik) }
+            if let v = veri, kuyruk.sync(execute: { saatDuzelt }) {
+                if let c = kuyruk.sync(execute: { kaydirma }) ?? ZamanDuzeltici.kaydirma(v) {
+                    kuyruk.sync { if kaydirma == nil { kaydirma = c } }
+                    veri = ZamanDuzeltici.duzelt(v, kaydirma: c)
+                }
+            }
             kuyruk.sync {
                 guard oturum == oturumNo else { return }
                 if let veri {
@@ -315,8 +351,8 @@ final class CanliTampon: @unchecked Sendable {
         return (String(decoding: veri, as: UTF8.self), cevap.url ?? u)
     }
 
-    private func veriIndir(_ u: URL, kimlik: String) async -> Data? {
-        guard let (veri, cevap) = try? await URLSession.shared.data(for: istek(u, kimlik: kimlik)),
+    private func veriIndir(_ u: URL, kimlik: String, sure: TimeInterval = 15) async -> Data? {
+        guard let (veri, cevap) = try? await URLSession.shared.data(for: istek(u, kimlik: kimlik, sure: sure)),
               let kod = (cevap as? HTTPURLResponse)?.statusCode, kod == 200 || kod == 206, !veri.isEmpty else { return nil }
         return veri
     }
