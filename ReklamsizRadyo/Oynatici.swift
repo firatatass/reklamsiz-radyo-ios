@@ -514,10 +514,16 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             payiKoru()
         } else if caliyor {
             // Yayın takıldı: önce canlıya atla, 15 saniyede hâlâ ses yoksa baştan bağlan.
+            // Yayın daha ilk kez hazırlanırken atlanmaz: atlamak indirileni çöpe atıp açılışı uzatıyordu
+            // (ölçüm kaydında Show Max 4. saniyedeki atlamadan sonra 12,6 saniyede açıldı).
             beklemeSayaci += 1
             if beklemeSayaci == 4 {
-                olc("4 sn ses yok: canlıya atlanıyor")
-                canliyaAtla()
+                if p.currentItem?.status == .readyToPlay {
+                    olc("4 sn ses yok: canlıya atlanıyor")
+                    canliyaAtla()
+                } else {
+                    olc("4 sn ses yok: yayın hâlâ hazırlanıyor, bekleniyor")
+                }
             }
             if beklemeSayaci >= 15 {
                 olc("15 sn ses yok: yeniden bağlanılıyor")
