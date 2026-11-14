@@ -23,6 +23,8 @@ enum Yenilikler {
         5. Çalan bir radyo, kanal veya kayıt silindiğinde yayın artık tamamen duruyor.
 
         6. Sesli asistan, anlaşılamayan komutlarda yüzlerce kanalı okumak yerine komutu tekrar istiyor.
+
+        7. Siri ile radyo ve TV kanalı açabilirsiniz. Örneğin "Hey Siri, Reklamsız Radyo'da TRT 1 aç" deyin. Siri, listenizdeki kanalı açar.
         """,
     ]
 
