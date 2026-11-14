@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct ReklamsizRadyoApp: App {
-    @StateObject private var depo = Depo()
+    @StateObject private var depo = Depo.paylasilan
     @StateObject private var oynatici = Oynatici()
     @StateObject private var bildirim = Bildirim.shared
     @StateObject private var asistan = SesliAsistan.shared
@@ -28,6 +28,11 @@ struct ReklamsizRadyoApp: App {
                         if asistan.acik { asistan.dinlemeyeYenidenBasla() } else { asistan.pencereyiAc() }
                     }
                     SallamaAlgilayici.shared.baslat()
+                    // Siri'nin tanıdığı kanal adları güncellenir.
+                    ReklamsizRadyoKisayollari.updateAppShortcutParameters()
+                }
+                .onChange(of: depo.degisim) { _ in
+                    ReklamsizRadyoKisayollari.updateAppShortcutParameters()
                 }
                 .onChange(of: sahne) { s in
                     // Android'de de sallama sadece uygulama ekrandayken dinlenir (onResume/onPause).

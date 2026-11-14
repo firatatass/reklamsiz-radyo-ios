@@ -75,10 +75,13 @@ enum AsistanSesi {
         case .male: ek.append("Erkek")
         default: break
         }
-        switch v.quality {
-        case .enhanced: ek.append("Gelişmiş")
-        case .premium: ek.append("Üstün Kalite")
-        default: break
+        // iPhone kalite bilgisini adına zaten yazıyorsa ("Cem (Geliştirilmiş)") tekrar eklenmez.
+        if !v.name.contains("(") {
+            switch v.quality {
+            case .enhanced: ek.append("Gelişmiş")
+            case .premium: ek.append("Üstün Kalite")
+            default: break
+            }
         }
         return ek.isEmpty ? v.name : "\(v.name) (\(ek.joined(separator: ", ")))"
     }

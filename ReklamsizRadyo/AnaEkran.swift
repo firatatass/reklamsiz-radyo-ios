@@ -137,6 +137,11 @@ struct AnaEkran: View {
         }
         .onAppear {
             if sekme == "rec" { kayitDosyalari = depo.kayitDosyalari() }
+            // Uygulama Siri'den kapalıyken açıldıysa, ekran hazır olmadan gelen kanal isteği burada çalınır.
+            if let i = asistan.istek {
+                asistan.istek = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { asistanIstegi(i) }
+            }
             if depo.listeKapali && kategori == TV_KATEGORI { kategori = "Tümü" }
             listeUyarisiniGoster()
             if !gelistiriciBilgisiGosterildi {

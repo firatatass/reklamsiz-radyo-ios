@@ -106,6 +106,9 @@ enum M3U {
 /// kullanıcının sildiği veya düzenlediği kayıt geri getirilmez, kullanıcının eklediği kayda dokunulmaz.
 @MainActor
 final class Depo: ObservableObject {
+    /// Uygulamanın tek listesi: ekranlar da Siri de aynı listeyi kullanır.
+    static let paylasilan = Depo()
+
     @Published private(set) var kayitlar: [Kayit] = []
     /// Kategori, veri sayacı gibi ayarlar değişince ekranın yenilenmesi için.
     @Published private(set) var degisim = 0

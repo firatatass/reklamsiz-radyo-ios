@@ -31,6 +31,9 @@ targets:
       path: ReklamsizRadyo/Info.plist
       properties:
         CFBundleDisplayName: Reklamsız Radyo
+        INAlternativeAppNames:
+          - INAlternativeAppName: Erişilebilir Reklamsız Radyo
+          - INAlternativeAppName: Erişilebilir Radyo
         CFBundleDevelopmentRegion: tr
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
