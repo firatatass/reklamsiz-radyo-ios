@@ -26,11 +26,15 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_OBJC_BRIDGING_HEADER: ReklamsizRadyo/KopruBasligi.h
+        CODE_SIGN_ENTITLEMENTS: ReklamsizRadyo/ReklamsizRadyo.entitlements
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/LAME", "$(SRCROOT)/LAME/include", "$(SRCROOT)/LAME/libmp3lame"]
     info:
       path: ReklamsizRadyo/Info.plist
       properties:
         CFBundleDisplayName: Reklamsız Radyo
+        NSSiriUsageDescription: Siri ile radyo istasyonu ve TV kanalı açabilmeniz için gerekir.
+        INIntentsSupported: [INPlayMediaIntent]
+        INSupportedMediaCategories: [INMediaCategoryRadio, INMediaCategoryGeneral]
         INAlternativeAppNames:
           - INAlternativeAppName: Erişilebilir Reklamsız Radyo
           - INAlternativeAppName: Erişilebilir Radyo

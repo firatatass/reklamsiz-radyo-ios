@@ -1,9 +1,12 @@
+import Intents
 import SwiftUI
 
 @main
 struct ReklamsizRadyoApp: App {
     @StateObject private var depo = Depo.paylasilan
-    @StateObject private var oynatici = Oynatici()
+    @StateObject private var oynatici = Oynatici.paylasilan
+    /// Siri'nin "... aç/çal" isteklerini (INPlayMediaIntent) alır.
+    @UIApplicationDelegateAdaptor(UygulamaTemsilcisi.self) private var temsilci
     @StateObject private var bildirim = Bildirim.shared
     @StateObject private var asistan = SesliAsistan.shared
     @AppStorage("app_theme") private var tema = 2
@@ -30,6 +33,12 @@ struct ReklamsizRadyoApp: App {
                     SallamaAlgilayici.shared.baslat()
                     // Siri'nin tanıdığı kanal adları güncellenir.
                     ReklamsizRadyoKisayollari.updateAppShortcutParameters()
+                    // Siri ile kanal açılabilmesi için bir kez izin istenir.
+                    if INPreferences.siriAuthorizationStatus() == .notDetermined {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            INPreferences.requestSiriAuthorization { _ in }
+                        }
+                    }
                 }
                 .onChange(of: depo.degisim) { _ in
                     ReklamsizRadyoKisayollari.updateAppShortcutParameters()

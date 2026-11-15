@@ -1,6 +1,31 @@
 import AppIntents
 
-/// Siri ve Kestirmeler uygulaması için kanal: kullanıcının listesindeki radyo istasyonu ya da TV kanalı.
+/// Siri ve Kestirmeler için kanal listesi: kullanıcının listesindeki radyo istasyonları ve TV kanalları.
+/// `sadeceTV`: true yalnızca TV kanalları, nil hepsi.
+@MainActor private func siriListesi(sadeceTV: Bool?) -> [(Kayit, Bool)] {
+    let d = Depo.paylasilan
+    return d.asistanListesi.map { ($0, d.tvMi($0)) }.filter { sadeceTV == nil || $0.1 == sadeceTV }
+}
+
+/// Söylenen ada uyan kanallar (sesli asistanla aynı eşleştirme).
+@MainActor private func siriBul(_ ad: String, sadeceTV: Bool?) -> [(Kayit, Bool)] {
+    let d = Depo.paylasilan
+    let kayitlar = siriListesi(sadeceTV: sadeceTV).map { $0.0 }
+    var bulunan = KanalBulucu.kesinBul(ad, kayitlar, tvMi: { d.tvMi($0) }, tvKategorisiAcik: sadeceTV == true)
+    if bulunan.isEmpty {
+        let aranan = KanalBulucu.normalize(ad)
+        if !aranan.isEmpty { bulunan = kayitlar.filter { KanalBulucu.normalize($0.ad).contains(aranan) } }
+    }
+    return bulunan.prefix(10).map { ($0, d.tvMi($0)) }
+}
+
+/// Kestirmeler'deki listede kaç kanal ve kaç TV kanalı verildiği test kaydına yazılır.
+@MainActor private func oneriKaydi(_ l: [(Kayit, Bool)], _ ne: String) {
+    OlcumKaydi.shared.yaz("siri öneri (\(ne)): \(l.count) kanal, \(l.filter { $0.1 }.count) TV")
+}
+
+// MARK: Bütün kanallar
+
 struct SiriKanali: AppEntity {
     static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Kanal")
     static var defaultQuery = SiriKanalSorgusu()
@@ -15,35 +40,24 @@ struct SiriKanali: AppEntity {
     }
 }
 
-/// Siri, söylenen kanal adını kullanıcının kendi listesinden bulur (sesli asistanla aynı eşleştirme).
 struct SiriKanalSorgusu: EntityStringQuery {
-    @MainActor private static func liste() -> [SiriKanali] {
-        let d = Depo.paylasilan
-        return d.asistanListesi.map { SiriKanali(id: $0.url, ad: $0.ad, tv: d.tvMi($0)) }
+    private static func donustur(_ l: [(Kayit, Bool)]) -> [SiriKanali] {
+        l.map { SiriKanali(id: $0.0.url, ad: $0.0.ad, tv: $0.1) }
     }
 
     func entities(for identifiers: [SiriKanali.ID]) async throws -> [SiriKanali] {
-        let l = await Self.liste()
-        return l.filter { identifiers.contains($0.id) }
+        let l = await siriListesi(sadeceTV: nil)
+        return Self.donustur(l).filter { identifiers.contains($0.id) }
     }
 
     func entities(matching string: String) async throws -> [SiriKanali] {
-        await MainActor.run {
-            let d = Depo.paylasilan
-            let kayitlar = d.asistanListesi
-            var bulunan = KanalBulucu.kesinBul(string, kayitlar, tvMi: { d.tvMi($0) }, tvKategorisiAcik: false)
-            if bulunan.isEmpty {
-                let aranan = KanalBulucu.normalize(string)
-                if !aranan.isEmpty {
-                    bulunan = kayitlar.filter { KanalBulucu.normalize($0.ad).contains(aranan) }
-                }
-            }
-            return bulunan.prefix(10).map { SiriKanali(id: $0.url, ad: $0.ad, tv: d.tvMi($0)) }
-        }
+        Self.donustur(await siriBul(string, sadeceTV: nil))
     }
 
     func suggestedEntities() async throws -> [SiriKanali] {
-        await Self.liste()
+        let l = await siriListesi(sadeceTV: nil)
+        await oneriKaydi(l, "hepsi")
+        return Self.donustur(l)
     }
 }
 
@@ -58,8 +72,7 @@ struct KanalAcIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let d = Depo.paylasilan
-        guard let k = d.asistanListesi.first(where: { $0.url == kanal.id }) else {
+        guard let k = Depo.paylasilan.asistanListesi.first(where: { $0.url == kanal.id }) else {
             return .result(dialog: "\(kanal.ad) listenizde bulunamadı.")
         }
         OlcumKaydi.shared.yaz("siri: \(k.ad) açılıyor")
@@ -68,8 +81,63 @@ struct KanalAcIntent: AppIntent {
     }
 }
 
+// MARK: Yalnızca TV kanalları
+
+struct SiriTVKanali: AppEntity {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "TV Kanalı")
+    static var defaultQuery = SiriTVSorgusu()
+
+    let id: String
+    let ad: String
+
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(ad)") }
+}
+
+struct SiriTVSorgusu: EntityStringQuery {
+    private static func donustur(_ l: [(Kayit, Bool)]) -> [SiriTVKanali] {
+        l.map { SiriTVKanali(id: $0.0.url, ad: $0.0.ad) }
+    }
+
+    func entities(for identifiers: [SiriTVKanali.ID]) async throws -> [SiriTVKanali] {
+        let l = await siriListesi(sadeceTV: true)
+        return Self.donustur(l).filter { identifiers.contains($0.id) }
+    }
+
+    func entities(matching string: String) async throws -> [SiriTVKanali] {
+        Self.donustur(await siriBul(string, sadeceTV: true))
+    }
+
+    func suggestedEntities() async throws -> [SiriTVKanali] {
+        let l = await siriListesi(sadeceTV: true)
+        await oneriKaydi(l, "TV")
+        return Self.donustur(l)
+    }
+}
+
+struct TVKanaliAcIntent: AppIntent {
+    static var title: LocalizedStringResource = "TV Kanalı Aç"
+    static var description = IntentDescription("Listenizdeki bir TV kanalını açar.")
+    static var openAppWhenRun = true
+
+    @Parameter(title: "TV Kanalı", requestValueDialog: "Hangi TV kanalını açayım?")
+    var kanal: SiriTVKanali
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let k = Depo.paylasilan.asistanListesi.first(where: { $0.url == kanal.id }) else {
+            return .result(dialog: "\(kanal.ad) listenizde bulunamadı.")
+        }
+        OlcumKaydi.shared.yaz("siri: \(k.ad) açılıyor (TV)")
+        SesliAsistan.shared.istek = .cal(k)
+        return .result(dialog: "\(k.ad) açılıyor.")
+    }
+}
+
+// MARK: Siri cümleleri
+
 /// Siri'ye ayrıca bir şey kurmadan söylenebilen cümleler. Apple, cümlede uygulama adının geçmesini şart koşar.
 struct ReklamsizRadyoKisayollari: AppShortcutsProvider {
+    @AppShortcutsBuilder
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: KanalAcIntent(), phrases: [
             "\(.applicationName)'da \(\.$kanal) aç",
@@ -79,6 +147,11 @@ struct ReklamsizRadyoKisayollari: AppShortcutsProvider {
             "\(.applicationName)'da \(\.$kanal) çal",
             "\(.applicationName)'da kanal aç",
             "\(.applicationName)'da radyo aç",
+        ])
+        AppShortcut(intent: TVKanaliAcIntent(), phrases: [
+            "\(.applicationName)'da TV kanalı aç",
+            "\(.applicationName)'da televizyon aç",
+            "\(.applicationName)'da \(\.$kanal) kanalını aç",
         ])
     }
 }

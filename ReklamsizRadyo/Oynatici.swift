@@ -73,6 +73,9 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         player?.volume = sesCarpani * (kisik ? 0.25 : 1)
     }
 
+    /// Uygulamanın tek oynatıcısı: ekranlar da Siri de (uygulama arka plandayken) aynı oynatıcıyı kullanır.
+    static let paylasilan = Oynatici()
+
     override init() {
         super.init()
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)

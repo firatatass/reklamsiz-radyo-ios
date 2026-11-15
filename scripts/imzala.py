@@ -24,6 +24,15 @@ def calistir(*komut):
 bundle = [b for b in api("GET", "bundleIds", params={"filter[identifier]": BUNDLE_ID})["data"]
           if b["attributes"]["identifier"] == BUNDLE_ID][0]
 
+# Siri ile kanal açma (INPlayMediaIntent) için uygulama kimliğinde SiriKit yetkisi açık olmalı;
+# profil aşağıda bu yetkiyle yeniden üretilir. Yetki zaten varsa bir şey yapılmaz.
+yetkiler = api("GET", f"bundleIds/{bundle['id']}/bundleIdCapabilities")["data"]
+if not any(y["attributes"].get("capabilityType") == "SIRIKIT" for y in yetkiler):
+    api("POST", "bundleIdCapabilities", {"data": {"type": "bundleIdCapabilities",
+        "attributes": {"capabilityType": "SIRIKIT"},
+        "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": bundle["id"]}}}}})
+    print("SiriKit yetkisi eklendi")
+
 # Sertifika sınırı dolmasın: 2 ve fazlası varsa en eskileri iptal et
 mevcut = api("GET", "certificates", params={"filter[certificateType]": "DISTRIBUTION", "limit": 200})["data"]
 mevcut.sort(key=lambda c: c["attributes"].get("expirationDate") or "")
