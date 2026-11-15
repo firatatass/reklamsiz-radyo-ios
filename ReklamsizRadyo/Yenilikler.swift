@@ -7,45 +7,41 @@ import SwiftUI
 enum Yenilikler {
     static let surum = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
 
-    /// Sürüm başına yenilikler. Bir sürümün metni yoksa pencere açılmaz.
-    static let notlar: [String: String] = [
-        "1.2": """
-        Bu güncellemeyle gelenler:
-
-        1. Yayınlar daha hızlı açılıyor. Bazı kanallarda yaşanan takılma, donma ve açılmama sorunları giderildi.
-
-        2. Ayarlar'a "Sekmelerin Yeri" eklendi. Sekmeleri ekranın üstünde veya altında kullanabilirsiniz.
-
-        3. Ayarlar'a "Ekranı Açık Tut" eklendi. Açıkken, yayın dinlerken ekran kapanmaz.
-
-        4. Ayarlar'a "Asistan Sesi" eklendi. Sesli asistanın konuşma sesini telefonunuzdaki Türkçe sesler arasından seçebilirsiniz.
-
-        5. Çalan bir radyo, kanal veya kayıt silindiğinde yayın artık tamamen duruyor.
-
-        6. Sesli asistan, anlaşılamayan komutlarda yüzlerce kanalı okumak yerine komutu tekrar istiyor.
-
-        7. Siri ile radyo ve TV kanalı açabilirsiniz. Örneğin "Hey Siri, Reklamsız Radyo'da TRT 1 aç" deyin. Siri, listenizdeki kanalı açar.
-        """,
+    /// Sürüm başına yenilikler, madde madde. Her madde ekran okuyucuda ayrı bir satır olarak okunur.
+    /// Bir sürümün maddesi yoksa pencere açılmaz.
+    static let notlar: [String: [String]] = [
+        "1.2": [
+            "1. Yayınlar daha hızlı açılıyor. Bazı kanallarda yaşanan takılma, donma ve açılmama sorunları giderildi.",
+            "2. Ayarlar'a \"Sekmelerin Yeri\" eklendi. Sekmeleri ekranın üstünde veya altında kullanabilirsiniz.",
+            "3. Ayarlar'a \"Ekranı Açık Tut\" eklendi. Açıkken, yayın dinlerken ekran kapanmaz.",
+            "4. Ayarlar'a \"Asistan Sesi\" eklendi. Sesli asistanın konuşma sesini telefonunuzdaki Türkçe sesler arasından seçebilirsiniz.",
+            "5. Çalan bir radyo, kanal veya kayıt silindiğinde yayın artık tamamen duruyor.",
+            "6. Sesli asistan, anlaşılamayan komutlarda yüzlerce kanalı okumak yerine komutu tekrar istiyor.",
+            "7. Siri ile radyo ve TV kanalı açabilirsiniz. Örneğin \"Hey Siri, Kanal D'yi Reklamsız Radyo'da aç\" deyin. Siri, listenizdeki kanalı açar.",
+        ],
     ]
 
-    static var buSurumunNotu: String? { notlar[surum] }
+    static var buSurumunNotu: [String]? { notlar[surum] }
 }
 
+/// Başlık, maddeler ve en sonda Kapat düğmesi: ekran okuyucuyla sağa kaydırarak sırayla dolaşılır.
 struct YeniliklerPenceresi: View {
     @Environment(\.dismiss) private var kapat
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                Text(Yenilikler.buSurumunNotu ?? "")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Yenilikler, Sürüm \(Yenilikler.surum)")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(Array((Yenilikler.buSurumunNotu ?? []).enumerated()), id: \.offset) { _, madde in
+                    Text(madde)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                BuyukDugme(baslik: "Kapat") { kapat() }
+                    .padding(.top, 8)
             }
-            .navigationTitle("Yenilikler, Sürüm \(Yenilikler.surum)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Kapat") { kapat() }.keyboardShortcut(.cancelAction) }
-            }
+            .padding()
         }
         .accessibilityAction(.escape) { kapat() }
     }

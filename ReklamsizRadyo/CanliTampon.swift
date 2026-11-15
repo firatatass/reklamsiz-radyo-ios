@@ -52,6 +52,9 @@ final class CanliTampon: @unchecked Sendable {
     /// Bu oturumda parçaların saati düzeltilecek mi, ne kadar (90 kHz birim).
     private var saatDuzelt = false
     private var kaydirma: Int64?
+    /// Her hazırlık ve durdurmada artar: üst üste gelen iki açılışta (ör. kesinti bitince eski kanala yeniden
+    /// bağlanılırken Siri yeni kanal açınca) geç biten eski hazırlık yeni kanalın oturumunu bozmasın.
+    private var hazirlikNo = 0
 
     /// Adres bir HLS yayını olabilir mi (.m3u8). Asıl karar liste indirilince verilir.
     static func hlsOlabilir(_ u: URL) -> Bool {
@@ -105,6 +108,7 @@ final class CanliTampon: @unchecked Sendable {
     /// Yayının nasıl çalınacağına karar verir; kısa pencereli yayın için aracıyı hazırlar.
     func hazirla(_ kaynak: URL, kimlik: String) async -> Hazirlik {
         durdur()
+        let benim = kuyruk.sync { hazirlikNo }
         if let alt = Self.uzunListe(kaynak) {
             OlcumKaydi.shared.yaz("ölçüm atlandı: kayıtlı uzun liste")
             return .dogrudan(alt)
@@ -132,7 +136,8 @@ final class CanliTampon: @unchecked Sendable {
         }
         guard let port = await dinleyiciyiBaslat() else { return .yok }
         let yeniOturum = String(UUID().uuidString.prefix(8))
-        kuyruk.sync {
+        let gecerli = kuyruk.sync { () -> Bool in
+            guard hazirlikNo == benim else { return false }
             oturum = yeniOturum
             parcalar = []
             kesintiSirasi = 0
@@ -142,11 +147,14 @@ final class CanliTampon: @unchecked Sendable {
             hedefSure = max(bulunan.0.hedef, 1)
             saatDuzelt = saatBozuk
             kaydirma = nil
+            return true
         }
+        guard gecerli else { return .yok }
         await isle(bulunan.0, adres: bulunan.1, kimlik: kimlik, oturumNo: yeniOturum)
         let ilk = kuyruk.sync { parcalar.count }
         OlcumKaydi.shared.yaz("aracı: ilk \(ilk) parça indi (\(gecenSure(t0)))")
         if ilk == 0 { return .yok }
+        guard kuyruk.sync(execute: { hazirlikNo == benim }) else { return .yok }
         let adres = bulunan.1
         gorev = Task.detached { [weak self] in
             await self?.dongu(adres, kimlik: kimlik, oturumNo: yeniOturum)
@@ -159,6 +167,7 @@ final class CanliTampon: @unchecked Sendable {
         gorev?.cancel()
         gorev = nil
         kuyruk.sync {
+            hazirlikNo += 1
             oturum = ""
             parcalar = []
         }

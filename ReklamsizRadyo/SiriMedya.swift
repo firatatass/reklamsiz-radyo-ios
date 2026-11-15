@@ -32,23 +32,35 @@ enum SiriMedya {
         }
     }
 
-    /// Kanalı çalar. Uygulama ekrandaysa sesli asistanla aynı yoldan (liste de doğru sekmeye geçer),
-    /// değilse doğrudan oynatıcıdan.
-    @MainActor static func cal(_ adres: String) -> Bool {
+    enum Sonuc { case caldi, uygulamada, yok }
+
+    /// Kanalı çalar. Uygulama ekrandaysa sesli asistanla aynı yoldan (liste doğru sekmeye geçer, TV veri
+    /// uyarısı ve veri sınırı uygulamadaki gibi sorulur). Uygulama ekranda değilse kanal arka planda çalar;
+    /// ama TV uyarısı gösterilmesi gerekiyorsa ya da veri sınırı dolduysa arka planda çalınmaz: uygulama
+    /// açılır ve uyarı orada, kullanıcı dokununca çıktığı gibi gösterilir.
+    @MainActor static func cal(_ adres: String) -> Sonuc {
         let d = Depo.paylasilan
         guard let k = d.asistanListesi.first(where: { $0.url == adres }) else {
             OlcumKaydi.shared.yaz("siri medya: kanal listede yok")
-            return false
+            return .yok
         }
         if UIApplication.shared.applicationState == .active {
             OlcumKaydi.shared.yaz("siri medya: \(k.ad) açılıyor (ekranda)")
             SesliAsistan.shared.istek = .cal(k)
-        } else {
-            OlcumKaydi.shared.yaz("siri medya: \(k.ad) açılıyor (arka planda)")
-            let tv = d.tvMi(k)
-            Oynatici.paylasilan.baslat(k, liste: d.asistanListesi.filter { d.tvMi($0) == tv })
+            return .caldi
         }
-        return true
+        let tv = d.tvMi(k)
+        let tvUyarisiGerekli = tv && !UserDefaults.standard.bool(forKey: "tv_data_warning_ignored")
+        let sinir = d.veriSiniri(k.url)
+        let sinirDolu = sinir > 0 && d.veriTuketimi(k.url) >= sinir * 1024 * 1024
+        if tvUyarisiGerekli || sinirDolu {
+            OlcumKaydi.shared.yaz("siri medya: \(k.ad) için uyarı gerekli (\(sinirDolu ? "veri sınırı dolu" : "TV veri uyarısı")), uygulama açılıyor")
+            SesliAsistan.shared.istek = .cal(k)
+            return .uygulamada
+        }
+        OlcumKaydi.shared.yaz("siri medya: \(k.ad) açılıyor (arka planda)")
+        Oynatici.paylasilan.baslat(k, liste: d.asistanListesi.filter { d.tvMi($0) == tv })
+        return .caldi
     }
 }
 
@@ -85,11 +97,16 @@ final class SiriMedyaIsleyici: NSObject, INPlayMediaIntentHandling {
         let adres = intent.mediaItems?.first?.identifier
         Task { @MainActor in
             OlcumKaydi.shared.yaz("siri medya: çalma isteği geldi")
-            guard let adres, SiriMedya.cal(adres) else {
+            guard let adres else {
                 completion(INPlayMediaIntentResponse(code: .failure, userActivity: nil))
                 return
             }
-            completion(INPlayMediaIntentResponse(code: .success, userActivity: nil))
+            switch SiriMedya.cal(adres) {
+            case .caldi: completion(INPlayMediaIntentResponse(code: .success, userActivity: nil))
+            // Uyarı uygulamada gösterilecek: Siri uygulamayı öne getirir.
+            case .uygulamada: completion(INPlayMediaIntentResponse(code: .continueInApp, userActivity: nil))
+            case .yok: completion(INPlayMediaIntentResponse(code: .failure, userActivity: nil))
+            }
         }
     }
 }
@@ -106,7 +123,7 @@ final class UygulamaTemsilcisi: NSObject, UIApplicationDelegate {
             completionHandler(INPlayMediaIntentResponse(code: .failure, userActivity: nil))
             return
         }
-        let tamam = SiriMedya.cal(adres)
-        completionHandler(INPlayMediaIntentResponse(code: tamam ? .success : .failure, userActivity: nil))
+        let sonuc = SiriMedya.cal(adres)
+        completionHandler(INPlayMediaIntentResponse(code: sonuc == .yok ? .failure : .success, userActivity: nil))
     }
 }
