@@ -36,6 +36,7 @@ struct AyarlarEkrani: View {
     @State private var varsayilanUyarisi = false
     @State private var temizlemeUyarisi = false
     @State private var olcumPaylas: PaylasilacakDosya?
+    @State private var yeniliklerAcik = false
 
     var body: some View {
         NavigationStack {
@@ -92,6 +93,13 @@ struct AyarlarEkrani: View {
                         OlcumKaydi.shared.sil()
                         bildirim.goster("Ölçüm kaydı silindi")
                     }
+                    // Yeni kurulumdaki gibi: TV kanalına dokununca (ya da Siri ile açınca) veri uyarısı yeniden çıkar.
+                    satir("Test: TV Uyarısını Yeniden Göster") {
+                        UserDefaults.standard.set(false, forKey: "tv_data_warning_ignored")
+                        bildirim.goster("TV veri uyarısı yeniden gösterilecek.")
+                    }
+                    // Güncelleme notlarını her derlemeden sonra kontrol edebilmek için.
+                    satir("Test: Yenilikleri Göster") { yeniliklerAcik = true }
                 }
             }
             .navigationTitle("Ayarlar")
@@ -103,6 +111,7 @@ struct AyarlarEkrani: View {
         .sheet(isPresented: $rehberAcik) { RehberPenceresi(asistan: asistan) }
         .sheet(item: $altPencere) { p in altPencereGorunumu(p) }
         .sheet(item: $olcumPaylas) { d in PaylasPenceresi(ogeler: [d.url]) }
+        .sheet(isPresented: $yeniliklerAcik) { YeniliklerPenceresi() }
         .fileImporter(isPresented: $dosyaSecici, allowedContentTypes: [.item]) { sonuc in dosyaSecildi(sonuc) }
         .fileExporter(isPresented: $yedekAcik, document: YedekBelgesi(veri: depo.yedekVerisi()),
                       contentType: .json, defaultFilename: "ReklamsizRadyo_Yedek") { sonuc in
