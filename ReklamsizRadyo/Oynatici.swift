@@ -51,6 +51,9 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private var dogrudanCal = false
     /// Uzun pencereli yayın, kaydedilen alt listesinden mi çalıyor.
     private var altListeden = false
+    /// Siri dinlerken ya da telefon araması sürerken iPhone yayını keser ("ses kesintisi").
+    /// Kesinti bitene kadar yayın kendiliğinden yeniden başlatılmaz; başlatılırsa Siri'nin dinlemesi bozuluyordu.
+    private var sesKesintide = false
     /// Saati düzeltilen yayın aracıdan açılamazsa doğrudan çalınacak alt liste.
     private var araciYedegi: URL?
     /// Ölçüm kaydı (yalnızca test derlemesi): kullanıcının yayını açtığı an ve ilk ses.
@@ -128,6 +131,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         // Android'de de başka yayına geçince süren kayıt bitirilip kaydedilir.
         if Kaydedici.shared.kayitta { Kaydedici.shared.durdur() }
         temizle()
+        sesKesintide = false
         calan = k
         bilgi = ""
         caliyor = true
@@ -288,6 +292,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             // Canlı yayında devam edince en güncel yerden yeniden bağlanılır.
             let eski = konum
             temizle()
+            sesKesintide = false
             caliyor = true
             yenidenDeneme = 0
             oynaticiKur(k)
@@ -456,7 +461,13 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     }
 
     private func sesKesintisi(_ tur: UInt?) {
-        guard let tur, AVAudioSession.InterruptionType(rawValue: tur) == .ended, caliyor, let k = calan else { return }
+        guard let tur, let olay = AVAudioSession.InterruptionType(rawValue: tur) else { return }
+        if olay == .began {
+            sesKesintide = true
+            return
+        }
+        sesKesintide = false
+        guard caliyor, let k = calan else { return }
         try? AVAudioSession.sharedInstance().setActive(true)
         if k.dosyaMi {
             player?.play()
@@ -565,7 +576,7 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
             yenidenDeneme = 0
             beklemeSayaci = 0
             payiKoru()
-        } else if caliyor {
+        } else if caliyor && !sesKesintide {
             // Yayın takıldı: önce canlıya atla, 15 saniyede hâlâ ses yoksa baştan bağlan.
             beklemeSayaci += 1
             if beklemeSayaci == 4 {
