@@ -135,6 +135,28 @@ struct TVKanaliAcIntent: AppIntent {
     }
 }
 
+// MARK: Yayını kapatma
+
+/// "Reklamsız Radyo'yu kapat": çalan yayını tamamen durdurur ve bildirim panelinden / kilit ekranından kaldırır.
+/// (İki parmakla iki kez dokunma yalnızca duraklatır; yayın panelde kalır, yeniden dokununca devam eder.)
+struct YayiniKapatIntent: AppIntent {
+    static var title: LocalizedStringResource = "Yayını Kapat"
+    static var description = IntentDescription("Çalan radyoyu veya TV kanalını kapatır ve bildirim panelinden kaldırır.")
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let o = Oynatici.paylasilan
+        guard o.calan != nil else {
+            OlcumKaydi.shared.yaz("siri: kapatma istendi, çalan yayın yok")
+            return .result(dialog: "Şu an çalan bir yayın yok.")
+        }
+        OlcumKaydi.shared.yaz("siri: yayın kapatıldı")
+        o.durdur()
+        return .result(dialog: "Yayın kapatıldı.")
+    }
+}
+
 // MARK: Siri cümleleri
 
 /// Siri'ye ayrıca bir şey kurmadan söylenebilen cümleler. Apple, cümlede uygulama adının geçmesini şart koşar.
@@ -149,6 +171,13 @@ struct ReklamsizRadyoKisayollari: AppShortcutsProvider {
             "\(.applicationName)'da \(\.$kanal) çal",
             "\(.applicationName)'da kanal aç",
             "\(.applicationName)'da radyo aç",
+        ])
+        AppShortcut(intent: YayiniKapatIntent(), phrases: [
+            "\(.applicationName)'yu kapat",
+            "\(.applicationName) kapat",
+            "\(.applicationName)'daki yayını kapat",
+            "\(.applicationName)'da yayını kapat",
+            "\(.applicationName)'yu sustur",
         ])
         AppShortcut(intent: TVKanaliAcIntent(), phrases: [
             "\(.applicationName)'da TV kanalı aç",

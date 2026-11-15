@@ -18,6 +18,7 @@ enum Yenilikler {
             "5. Çalan bir radyo, kanal veya kayıt silindiğinde yayın artık tamamen duruyor.",
             "6. Sesli asistan, anlaşılamayan komutlarda yüzlerce kanalı okumak yerine komutu tekrar istiyor.",
             "7. Siri ile radyo ve TV kanalı açabilirsiniz. Örneğin \"Hey Siri, Kanal D'yi Reklamsız Radyo'da aç\" deyin. Siri, listenizdeki kanalı açar.",
+            "8. Siri ile çalan yayını kapatabilirsiniz: \"Hey Siri, Reklamsız Radyo'yu kapat\" deyin. Yayın durur ve bildirim panelinden kalkar.",
         ],
     ]
 
