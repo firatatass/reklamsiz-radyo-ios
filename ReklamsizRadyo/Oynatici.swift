@@ -226,10 +226,13 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
                               : o.status == .failed ? "öğe HATA: \(o.error?.localizedDescription ?? "-")" : "öğe bilinmiyor")
                     if o.status == .failed { self?.yayinKoptu() }
                     // Görüntü ekranda gösterilmediği için çözülmez, yalnızca ses çalınır.
-                    if o.status == .readyToPlay {
-                        for t in o.tracks where t.assetTrack?.mediaType == .video { t.isEnabled = false }
-                    }
+                    if o.status == .readyToPlay { self?.goruntuyuKapat(o) }
                 }
+            },
+            // Canlı yayında kalite değişince izler yeniden oluşur ve görüntü izi yeniden açık gelir. Görüntü izi
+            // açık kalırsa iPhone, uygulama arka plandayken görüntülü yayını kendiliğinden duraklatır.
+            oge.observe(\.tracks) { [weak self] o, _ in
+                Task { @MainActor in self?.goruntuyuKapat(o) }
             },
             p.observe(\.timeControlStatus) { [weak self] p, _ in
                 Task { @MainActor in self?.durumDegisti(p) }
@@ -253,6 +256,12 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
                 NotificationCenter.default.addObserver(
                     forName: AVPlayerItem.newErrorLogEntryNotification, object: oge, queue: .main) { [weak self] _ in
                     Task { @MainActor in self?.hataKaydi(oge) }
+                },
+                // Oynatıcı neden durdu/başladı: Apple'ın verdiği sebep (uygulama arka plana geçti, ses kesintisi vb.).
+                NotificationCenter.default.addObserver(
+                    forName: AVPlayer.rateDidChangeNotification, object: p, queue: .main) { n in
+                    let sebep = (n.userInfo?[AVPlayer.rateDidChangeReasonKey] as? AVPlayer.RateDidChangeReason)?.rawValue ?? "-"
+                    OlcumKaydi.shared.yaz("hız değişti: \(p.rate), sebep \(sebep)")
                 },
             ]
         }
@@ -372,6 +381,13 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         olcumGozlemcileri = []
     }
 
+    private func goruntuyuKapat(_ o: AVPlayerItem) {
+        for t in o.tracks where t.assetTrack?.mediaType == .video && t.isEnabled {
+            t.isEnabled = false
+            olc("görüntü izi kapatıldı")
+        }
+    }
+
     // MARK: Ölçüm kaydı (yalnızca test derlemesi)
 
     private func olc(_ olay: String) {
@@ -419,14 +435,22 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
         oturumGozlemcileri = [
             nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
                 let tur = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                OlcumKaydi.shared.yaz("ses kesintisi: tür \(tur.map { String($0) } ?? "-") (1 başladı, 0 bitti), sebep \(n.userInfo?[AVAudioSessionInterruptionReasonKey] ?? "-"), seçenek \(n.userInfo?[AVAudioSessionInterruptionOptionKey] ?? "-")")
                 Task { @MainActor in self?.sesKesintisi(tur) }
             },
             nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
                 let neden = n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                OlcumKaydi.shared.yaz("ses yolu değişti: sebep \(neden.map { String($0) } ?? "-")")
                 Task { @MainActor in self?.sesYoluDegisti(neden) }
             },
             nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.sesServisiSifirlandi() }
+            },
+            nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+                OlcumKaydi.shared.yaz("uygulama arka plana geçti")
+            },
+            nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
+                OlcumKaydi.shared.yaz("uygulama öne geldi")
             },
         ]
     }
@@ -668,16 +692,19 @@ final class Oynatici: NSObject, ObservableObject, AVPlayerItemMetadataOutputPush
     private func uzaktanKomutlariKur() {
         let m = MPRemoteCommandCenter.shared()
         m.playCommand.addTarget { [weak self] _ in
+            OlcumKaydi.shared.yaz("uzaktan komut: oynat")
             guard let self else { return .commandFailed }
             if !self.caliyor { self.oynatDuraklat() }
             return .success
         }
         m.pauseCommand.addTarget { [weak self] _ in
+            OlcumKaydi.shared.yaz("uzaktan komut: duraklat")
             guard let self else { return .commandFailed }
             if self.caliyor { self.oynatDuraklat() }
             return .success
         }
         m.togglePlayPauseCommand.addTarget { [weak self] _ in
+            OlcumKaydi.shared.yaz("uzaktan komut: oynat/duraklat")
             self?.oynatDuraklat()
             return .success
         }
