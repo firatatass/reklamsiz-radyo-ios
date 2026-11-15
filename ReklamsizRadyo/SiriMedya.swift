@@ -80,8 +80,17 @@ final class SiriMedyaIsleyici: NSObject, INPlayMediaIntentHandling {
     }
 
     func handle(intent: INPlayMediaIntent, completion: @escaping (INPlayMediaIntentResponse) -> Void) {
-        // Çalma uygulamada yapılır: sistem uygulamayı (gerekirse arka planda) açıp temsilciye iletir.
-        completion(INPlayMediaIntentResponse(code: .handleInApp, userActivity: nil))
+        // İstek zaten uygulamanın içinde işleniyor: kanal burada çalınır. (Önceden "uygulamada işle" cevabı
+        // veriliyordu; sistem isteği bir daha uygulamaya iletmedi ve Siri "bir sorun oluştu" dedi.)
+        let adres = intent.mediaItems?.first?.identifier
+        Task { @MainActor in
+            OlcumKaydi.shared.yaz("siri medya: çalma isteği geldi")
+            guard let adres, SiriMedya.cal(adres) else {
+                completion(INPlayMediaIntentResponse(code: .failure, userActivity: nil))
+                return
+            }
+            completion(INPlayMediaIntentResponse(code: .success, userActivity: nil))
+        }
     }
 }
 
