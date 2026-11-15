@@ -11,9 +11,11 @@ import AppIntents
 @MainActor private func siriBul(_ ad: String, sadeceTV: Bool?) -> [(Kayit, Bool)] {
     let d = Depo.paylasilan
     let kayitlar = siriListesi(sadeceTV: sadeceTV).map { $0.0 }
-    var bulunan = KanalBulucu.kesinBul(ad, kayitlar, tvMi: { d.tvMi($0) }, tvKategorisiAcik: sadeceTV == true)
+    let temiz = SiriMedya.adiTemizle(ad)
+    if temiz.isEmpty { return [] }
+    var bulunan = KanalBulucu.kesinBul(temiz, kayitlar, tvMi: { d.tvMi($0) }, tvKategorisiAcik: sadeceTV == true)
     if bulunan.isEmpty {
-        let aranan = KanalBulucu.normalize(ad)
+        let aranan = KanalBulucu.normalize(temiz)
         if !aranan.isEmpty { bulunan = kayitlar.filter { KanalBulucu.normalize($0.ad).contains(aranan) } }
     }
     return bulunan.prefix(10).map { ($0, d.tvMi($0)) }

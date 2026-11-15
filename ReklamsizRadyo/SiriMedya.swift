@@ -5,8 +5,21 @@ import UIKit
 /// bölümüne gönderiyor. Bu dosya o isteği (INPlayMediaIntent) uygulamaya bağlar; Kestirmeler açılmadan,
 /// uygulama ekrana gelmeden kanal çalar.
 enum SiriMedya {
+    /// Siri uygulamanın adını kanal adına katıyor ("Kanal D Reklamsız", "Reklamsız Radyo Seymen") ya da
+    /// kanal adı yerine yalnızca "Reklamsız" gönderiyor. Uygulama adı atılır; geriye kalan kanal adıdır.
+    static func adiTemizle(_ ham: String) -> String {
+        var s = " " + KanalBulucu.normalize(ham) + " "
+        for k in [" reklamsiz radyo ", " reklamsiz radyoda ", " reklamsiz radyoya ", " reklamsiz radyonun ",
+                  " reklamsizda ", " reklamsiz "] {
+            s = s.replacingOccurrences(of: k, with: " ")
+        }
+        return s.trimmingCharacters(in: .whitespaces)
+    }
+
     /// Söylenen ada uyan kanallar (sesli asistanla aynı eşleştirme).
-    @MainActor static func bul(_ ad: String) -> [INMediaItem] {
+    @MainActor static func bul(_ hamAd: String) -> [INMediaItem] {
+        let ad = adiTemizle(hamAd)
+        if ad.isEmpty { return [] }
         let d = Depo.paylasilan
         let kayitlar = d.asistanListesi
         var bulunan = KanalBulucu.kesinBul(ad, kayitlar, tvMi: { d.tvMi($0) }, tvKategorisiAcik: false)
@@ -44,8 +57,16 @@ final class SiriMedyaIsleyici: NSObject, INPlayMediaIntentHandling {
                            with completion: @escaping ([INPlayMediaMediaItemResolutionResult]) -> Void) {
         let arama = intent.mediaSearch
         let ad = arama?.mediaName ?? ""
+        let digerleri = [arama?.artistName, arama?.albumName, arama?.genreNames?.joined(separator: "/"),
+                         arama?.moodNames?.joined(separator: "/"), arama?.mediaIdentifier].compactMap { $0 }
         Task { @MainActor in
-            OlcumKaydi.shared.yaz("siri medya duydu: ad \"\(ad)\", tür \(arama?.mediaType.rawValue ?? -1)")
+            OlcumKaydi.shared.yaz("siri medya duydu: ad \"\(ad)\", tür \(arama?.mediaType.rawValue ?? -1), diğer: \(digerleri.joined(separator: " | "))")
+            // Siri yalnızca uygulama adını gönderdiyse kanal adı eksiktir: Siri kullanıcıya ne açılacağını sorar.
+            if SiriMedya.adiTemizle(ad).isEmpty {
+                OlcumKaydi.shared.yaz("siri medya: kanal adı yok, Siri soracak")
+                completion([INPlayMediaMediaItemResolutionResult.needsValue()])
+                return
+            }
             let ogeler = SiriMedya.bul(ad)
             OlcumKaydi.shared.yaz("siri medya: \(ogeler.count) sonuç: \(ogeler.prefix(4).compactMap(\.title).joined(separator: ", "))")
             if ogeler.isEmpty {
